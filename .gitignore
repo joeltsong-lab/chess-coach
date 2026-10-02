@@ -100,10 +100,8 @@ engine/pikafish.exe
 engine/*.nnue
 
 # ---------- 明确不忽略（源码目录与文档必须入库，防止上面的规则误伤）----------
+# 只对目录本身取反，不能用 !dir/**：那会把 __pycache__/、*.pyc 等也一并放行。
 !requirements.txt
 !mobile/
-!mobile/**
 !core/
-!core/**
 !web/
-!web/**

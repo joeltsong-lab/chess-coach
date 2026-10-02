@@ -10,14 +10,14 @@
 import argparse
 import sys
 
-from chess_engine import (
+from core.chess_engine import (
     ChessEngine,
     EngineError,
     ENGINE_PATH,
     NNUE_PATH,
     START_FEN,
 )
-from coord_utils import move_to_chinese, parse_fen
+from core.coord_utils import move_to_chinese, parse_fen
 
 
 def format_result(fen, result, movetime, engine_path):

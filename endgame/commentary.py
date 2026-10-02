@@ -270,7 +270,7 @@ def build_messages(facts: dict) -> list:
 
 def _default_llm_call(messages):
     """默认走 explainer.call_llm (OpenAI 兼容接口), 没配 key 会抛异常 -> 降级"""
-    from explainer import call_llm
+    from core.explainer import call_llm
     return call_llm(messages)
 
 

@@ -20,8 +20,8 @@
 只看最后一着会把"兑子后随便将一下"误判成长将。
 """
 
-import rules
-from coord_utils import GRID_COLS, GRID_ROWS, grid_to_square
+from core import rules
+from core.coord_utils import GRID_COLS, GRID_ROWS, grid_to_square
 
 from . import fen_rules
 

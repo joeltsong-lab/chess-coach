@@ -21,7 +21,10 @@ import os
 import sqlite3
 from pathlib import Path
 
-DEFAULT_DB_PATH = Path(__file__).parent / "data" / "chess.db"
+from . import PROJECT_ROOT
+
+# 默认落在 <项目根>/data/chess.db (项目根 = core/ 的上一级), 而不是 core/data/
+DEFAULT_DB_PATH = PROJECT_ROOT / "data" / "chess.db"
 # 生效的数据库路径: 有环境变量就用环境变量(测试常见做法), 否则用项目里的 data/chess.db
 DB_PATH = Path(os.environ["XQ_DB_PATH"]) if os.environ.get("XQ_DB_PATH") else DEFAULT_DB_PATH
 

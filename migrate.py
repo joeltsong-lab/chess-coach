@@ -206,7 +206,7 @@ def ensure_base_schema(path: Path) -> None:
     不能图省事调 storage.init_db(): 那个函数写的是 storage 当前生效的路径,
     传了 --db 指向别的库时就会把基础表建到错误的库上。
     """
-    import storage
+    from core import storage
 
     conn = connect(path)
     try:
@@ -353,7 +353,7 @@ def migrate(direction: str = "up", db_path: Path | str | None = None, to: int | 
     :param shadow: True 时先复制一份到临时文件试跑
     :return: {"db", "direction", "journal_mode", "shadow": [...], "applied": [...]}
     """
-    import storage   # 延迟导入: 让 migrate 可以单独跑, 也避免和 storage 循环依赖
+    from core import storage   # 延迟导入: 让 migrate 可以单独跑, 也避免和 storage 循环依赖
 
     path = Path(db_path) if db_path else storage._db_path()
     migrations = discover_migrations()
@@ -389,7 +389,7 @@ def ensure_migrated(verbose: bool = False) -> dict:
 
 def status(db_path: Path | str | None = None) -> list[dict]:
     """列出每个迁移的应用状态"""
-    import storage
+    from core import storage
 
     path = Path(db_path) if db_path else storage._db_path()
     ensure_base_schema(path)

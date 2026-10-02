@@ -37,8 +37,8 @@ from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-import storage
-from chess_engine import START_FEN
+from core import storage
+from core.chess_engine import START_FEN
 
 from . import commentary, csrf, exchange, fen_rules, patterns, store, tasks
 

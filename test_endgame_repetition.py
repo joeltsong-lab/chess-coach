@@ -7,7 +7,7 @@
 
 import unittest
 
-import rules
+from core import rules
 
 from endgame import repetition
 

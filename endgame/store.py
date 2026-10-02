@@ -24,7 +24,7 @@ import json
 import threading
 import uuid
 
-import storage
+from core import storage
 
 # 落库时缺省用的规则集名 (与迁移里的 DEFAULT 一致)
 DEFAULT_REPETITION_RULE = "chinese_2020_analysis"

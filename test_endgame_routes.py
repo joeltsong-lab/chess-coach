@@ -23,11 +23,10 @@ from pathlib import Path
 
 from flask import Flask
 
-from chess_engine import START_FEN
+from core.chess_engine import START_FEN
 
 import migrate
-import rules
-import storage
+from core import rules, storage
 from endgame import commentary
 from endgame import routes as endgame_routes
 from endgame import store, tasks

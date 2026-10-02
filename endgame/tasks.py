@@ -21,8 +21,8 @@ import json
 import threading
 import time
 
-import storage
-from chess_engine import START_FEN, ChessEngine, EngineError
+from core import storage
+from core.chess_engine import START_FEN, ChessEngine, EngineError
 
 from . import analyzer, fen_rules, store
 

@@ -10,8 +10,8 @@
 
 import unittest
 
-import rules
-from chess_engine import START_FEN
+from core import rules
+from core.chess_engine import START_FEN
 from endgame import analyzer, fen_rules
 
 

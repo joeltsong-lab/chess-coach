@@ -23,11 +23,10 @@ import time
 import unittest
 from pathlib import Path
 
-from chess_engine import START_FEN, EngineError
+from core.chess_engine import START_FEN, EngineError
 
 import migrate
-import rules
-import storage
+from core import rules, storage
 from endgame import analyzer, store, tasks
 
 # 一局 3 步的棋, 用来验证"从起始局面到当前 ply 的完整着法"

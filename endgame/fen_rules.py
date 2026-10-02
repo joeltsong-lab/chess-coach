@@ -20,8 +20,8 @@
 
 import hashlib
 
-import rules
-from coord_utils import GRID_COLS, GRID_ROWS, grid_to_square, square_to_grid
+from core import rules
+from core.coord_utils import GRID_COLS, GRID_ROWS, grid_to_square, square_to_grid
 
 # ----------------------------------------------------------------------
 # 常量表

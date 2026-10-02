@@ -13,9 +13,9 @@ import time
 import unittest
 from pathlib import Path
 
-from chess_engine import START_FEN
+from core.chess_engine import START_FEN
 
-import storage
+from core import storage
 
 START_FEN_BLACK = START_FEN.replace(" w ", " b ")
 

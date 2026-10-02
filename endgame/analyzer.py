@@ -21,9 +21,9 @@
 中文记谱 (san) 只用于展示。
 """
 
-import rules
-from chess_engine import START_FEN
-from coord_utils import pv_to_chinese
+from core import rules
+from core.chess_engine import START_FEN
+from core.coord_utils import pv_to_chinese
 
 from . import fen_rules
 from . import repetition as repetition_mod

@@ -32,9 +32,7 @@
 import datetime
 import json
 
-import pgn_io
-import rules
-import storage
+from core import pgn_io, rules, storage
 
 from . import analyzer, fen_rules, store
 

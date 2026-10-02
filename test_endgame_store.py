@@ -18,10 +18,10 @@ import threading
 import unittest
 from pathlib import Path
 
-from chess_engine import START_FEN
+from core.chess_engine import START_FEN
 
 import migrate
-import storage
+from core import storage
 from endgame import fen_rules, store
 
 AFTER_H2E2 = "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C2C4/9/RNBAKABNR b - - 0 1"

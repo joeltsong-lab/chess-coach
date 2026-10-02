@@ -7,7 +7,7 @@
 
 import unittest
 
-from chess_engine import START_FEN
+from core.chess_engine import START_FEN
 
 from endgame import fen_rules
 
