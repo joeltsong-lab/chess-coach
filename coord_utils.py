@@ -40,6 +40,40 @@ DIAGONAL_PIECES = {"N", "B", "A"}
 # ----------------------------------------------------------------------
 # ICCS <-> 前端 Grid
 # ----------------------------------------------------------------------
+def _check_orientation(grid_orientation):
+    if grid_orientation not in ("red_bottom", "black_bottom"):
+        raise ValueError(f"未知的 grid_orientation: {grid_orientation!r}")
+
+
+def square_to_grid(square, grid_orientation=GRID_ORIENTATION):
+    """ICCS 单格 -> 前端 Grid 坐标
+
+    :param square: 形如 "h2"; 后面多写的字符会被忽略
+    :return: [row, col]
+    """
+    _check_orientation(grid_orientation)
+    text = (square or "").strip()
+    if len(text) < 2:
+        raise ValueError(f"ICCS 单格至少需要 2 个字符: {square!r}")
+    file_ch, rank_ch = text[0], text[1]
+    if file_ch not in FILES:
+        raise ValueError(f"无法解析 ICCS 单格 (纵线必须是 a~i): {square!r}")
+    if rank_ch not in "0123456789":
+        raise ValueError(f"无法解析 ICCS 单格 (横线必须是 0~9): {square!r}")
+    rank = int(rank_ch)
+    row = 9 - rank if grid_orientation == "red_bottom" else rank
+    return [row, FILES.index(file_ch)]
+
+
+def grid_to_square(row, col, grid_orientation=GRID_ORIENTATION):
+    """前端 Grid 坐标 -> ICCS 单格 (square_to_grid 的逆运算)"""
+    _check_orientation(grid_orientation)
+    if not (0 <= row < GRID_ROWS) or not (0 <= col < GRID_COLS):
+        raise ValueError(f"Grid 坐标越界: row={row}, col={col}")
+    rank = 9 - row if grid_orientation == "red_bottom" else row
+    return f"{FILES[col]}{rank}"
+
+
 def iccs_to_grid(iccs_move, grid_orientation=GRID_ORIENTATION):
     """ICCS 着法 -> 前端 Grid 坐标
 
@@ -48,39 +82,18 @@ def iccs_to_grid(iccs_move, grid_orientation=GRID_ORIENTATION):
                              'black_bottom' 表示行 0 在上=红方底线
     :return: {"from": [row, col], "to": [row, col]}
     """
-    if grid_orientation not in ("red_bottom", "black_bottom"):
-        raise ValueError(f"未知的 grid_orientation: {grid_orientation!r}")
-
     move = (iccs_move or "").strip()
     if len(move) < 4:
         raise ValueError(f"ICCS 着法至少需要 4 个字符: {iccs_move!r}")
     head = move[:4]
-
-    def parse(file_ch, rank_ch):
-        if file_ch not in FILES:
-            raise ValueError(f"无法解析 ICCS 着法 (纵线必须是 a~i): {iccs_move!r}")
-        if rank_ch not in "0123456789":
-            raise ValueError(f"无法解析 ICCS 着法 (横线必须是 0~9): {iccs_move!r}")
-        col = FILES.index(file_ch)
-        rank = int(rank_ch)
-        row = 9 - rank if grid_orientation == "red_bottom" else rank
-        return [row, col]
-
-    return {"from": parse(head[0], head[1]), "to": parse(head[2], head[3])}
+    return {"from": square_to_grid(head[:2], grid_orientation),
+            "to": square_to_grid(head[2:4], grid_orientation)}
 
 
 def grid_to_iccs(row_from, col_from, row_to, col_to, grid_orientation=GRID_ORIENTATION):
     """前端 Grid 坐标 -> ICCS 着法 (iccs_to_grid 的逆运算)"""
-    if grid_orientation not in ("red_bottom", "black_bottom"):
-        raise ValueError(f"未知的 grid_orientation: {grid_orientation!r}")
-
-    def to_iccs(row, col):
-        if not (0 <= row < GRID_ROWS) or not (0 <= col < GRID_COLS):
-            raise ValueError(f"Grid 坐标越界: row={row}, col={col}")
-        rank = 9 - row if grid_orientation == "red_bottom" else row
-        return f"{FILES[col]}{rank}"
-
-    return to_iccs(row_from, col_from) + to_iccs(row_to, col_to)
+    return (grid_to_square(row_from, col_from, grid_orientation)
+            + grid_to_square(row_to, col_to, grid_orientation))
 
 
 # ----------------------------------------------------------------------

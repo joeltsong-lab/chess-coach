@@ -82,7 +82,10 @@ class TestCreateGame(StorageTestCase):
         self.assertEqual(storage.get_game_meta(gid)["id"], gid)
 
     def test_defaults_tuple_constants(self):
-        self.assertEqual(storage.CATEGORIES, ("game", "opening", "endgame", "study", "imported"))
+        # pattern / custom 是残局研究迁移新加的两个分类, 前 5 个是原有的
+        self.assertEqual(storage.CATEGORIES,
+                         ("game", "opening", "endgame", "study", "imported",
+                          "pattern", "custom"))
         self.assertEqual(storage.RESULTS, ("1-0", "0-1", "1/2-1/2", "*"))
         self.assertEqual(storage.STATUSES, ("active", "finished", "archived"))
 

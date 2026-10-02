@@ -25,7 +25,9 @@ DEFAULT_DB_PATH = Path(__file__).parent / "data" / "chess.db"
 # 生效的数据库路径: 有环境变量就用环境变量(测试常见做法), 否则用项目里的 data/chess.db
 DB_PATH = Path(os.environ["XQ_DB_PATH"]) if os.environ.get("XQ_DB_PATH") else DEFAULT_DB_PATH
 
-CATEGORIES = ("game", "opening", "endgame", "study", "imported")
+# 分类白名单。前 5 个是原有的; pattern(定式)/custom(摆设局面) 由残局研究功能
+# 的 0001 迁移加进来, games.category 的 CHECK 约束用的也是这 8 个值。
+CATEGORIES = ("game", "opening", "endgame", "study", "imported", "pattern", "custom")
 RESULTS = ("1-0", "0-1", "1/2-1/2", "*")
 STATUSES = ("active", "finished", "archived")
 
@@ -79,10 +81,12 @@ CREATE INDEX IF NOT EXISTS idx_games_tags ON games(tags);
 """
 
 # create_game 允许写入的列 (白名单: 列名拼 SQL 时只可能来自这里)
+# 后 4 列由残局研究的 0001 迁移加上, 迁移前写这些列会报 "no such column"
 GAME_FIELDS = (
     "name", "category", "start_fen", "current_fen", "side_to_move", "result", "status",
     "red_name", "black_name", "event", "site", "date", "round", "opening", "ecco",
     "tags", "note", "created_at", "updated_at",
+    "study_id", "fen_text", "rule_set", "opening_position_id",
 )
 
 # update_game 允许改的列: id 不可改, created_at 不可改, updated_at 由存储层自己刷
@@ -90,6 +94,7 @@ GAME_UPDATE_FIELDS = (
     "name", "category", "start_fen", "current_fen", "side_to_move", "result", "status",
     "red_name", "black_name", "event", "site", "date", "round", "opening", "ecco",
     "tags", "note",
+    "study_id", "fen_text", "rule_set", "opening_position_id",
 )
 
 # moves 允许写入/修改的列: id 与 game_id 不在其中, 保证不能改掉着法的归属

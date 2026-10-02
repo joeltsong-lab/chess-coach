@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>残局研究 · 摆盘 / 候选 / 主变 / 备注</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:18px;background:#f5f2ec;color:#2b2b2b;
+       font-family:'Microsoft YaHei',-apple-system,'Segoe UI',sans-serif}
+  h1{font-size:20px;margin:0 0 4px}
+  h1 a{font-size:13px;font-weight:400;margin-left:10px;color:#7a5a20}
+  .sub{color:#888;font-size:13px;margin:0 0 14px}
+  a{color:#7a5a20}
+  button{padding:8px 16px;border:0;border-radius:4px;background:#c0392b;color:#fff;
+         font-size:13px;cursor:pointer}
+  button:disabled{background:#c9b6b2;cursor:not-allowed}
+  button.ghost{padding:6px 12px;font-size:13px;background:#efe7d9;color:#7a5a20;
+               border:1px solid #ddd0b8}
+  button.ghost:hover:enabled{background:#e7dcc8}
+  button.tiny{padding:3px 8px;font-size:12px;background:#efe7d9;color:#7a5a20;
+              border:1px solid #ddd0b8}
+  input,select,textarea{padding:6px 8px;border:1px solid #d5cdbe;border-radius:4px;
+                         font-size:13px;background:#fff;font-family:inherit}
+  textarea{width:100%;font-family:Consolas,Monaco,monospace;font-size:12px;line-height:1.5;
+           resize:vertical}
+  label{display:block;font-size:12px;color:#555;margin:0 0 3px}
+  .hidden{display:none !important}
+  .muted{color:#999;font-size:12px}
+  .status{margin-top:8px;font-size:13px;color:#2d86c4;min-height:18px;white-space:pre-wrap}
+  .status.err{color:#c0392b}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .row>*{flex:0 0 auto}
+
+  /* ---------- 顶栏 ---------- */
+  .top{background:#fff;border:1px solid #e6ded0;border-radius:6px;padding:10px 12px;
+       margin-bottom:12px}
+  .box{background:#fff;border:1px solid #e6ded0;border-radius:6px;padding:10px 12px;
+       margin-bottom:12px}
+  .box h2{margin:0 0 8px;font-size:13px;color:#a08a63}
+
+  /* ---------- 四栏 ---------- */
+  .cols{display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr;gap:12px;align-items:start}
+  @media (max-width:1150px){.cols{grid-template-columns:1fr 1fr}}
+  @media (max-width:760px){.cols{grid-template-columns:1fr}}
+  .col{background:#fff;border:1px solid #e6ded0;border-radius:6px;padding:10px 12px}
+  .col>h2{margin:0 0 8px;font-size:13px;color:#a08a63;display:flex;justify-content:space-between}
+
+  /* ---------- 棋盘 ---------- */
+  .board{position:relative;width:100%;aspect-ratio:9/10;background:#f3dcb2;
+         border:3px solid #8a6a3a;border-radius:6px;container-type:inline-size;
+         user-select:none}
+  .lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .lines line{stroke:#8a6a3a;stroke-width:2}
+  .grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(9,1fr);
+        grid-template-rows:repeat(10,1fr)}
+  .cell{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .piece{width:82%;height:82%;border-radius:50%;display:flex;align-items:center;
+         justify-content:center;font-size:5cqw;font-weight:700;line-height:1;
+         background:radial-gradient(circle at 35% 28%,#fffdf7,#eed9b4);
+         border:2px solid #b98b4e;box-shadow:0 1px 2px rgba(0,0,0,.28)}
+  .piece.red{color:#c0392b;border-color:#c0392b}
+  .piece.black{color:#1f2d3d;border-color:#1f2d3d}
+  .cell.hl-from::before,.cell.hl-to::before{content:'';position:absolute;inset:7%;border-radius:50%}
+  .cell.hl-from::before{background:rgba(41,128,185,.30)}
+  .cell.hl-to::before{background:rgba(39,174,96,.35)}
+  .cell.pick::before{content:'';position:absolute;inset:7%;border-radius:50%;
+                     background:rgba(217,165,32,.35)}
+
+  .palette{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin:8px 0}
+  .palette button{padding:4px 0;font-size:14px;font-weight:700;background:#fdfaf3;
+                  color:#1f2d3d;border:1px solid #ddd0b8;border-radius:4px}
+  .palette button.red{color:#c0392b}
+  .palette button.on{outline:2px solid #c0392b;background:#f7e9c8}
+
+  /* ---------- 列表 ---------- */
+  .list{max-height:38vh;overflow:auto;border:1px solid #e6ded0;border-radius:6px;background:#fff}
+  .it{display:flex;gap:6px;align-items:baseline;padding:5px 8px;font-size:13px;
+      border-bottom:1px solid #f4f1ea;cursor:pointer}
+  .it:hover{background:#faf7f0}
+  .it.on{background:#f6e6bd}
+  .it .no{flex:0 0 30px;color:#aaa;font-size:12px}
+  .it .cn{flex:0 0 auto;font-weight:600}
+  .it .ic{flex:0 0 auto;color:#aaa;font-size:12px;font-family:Consolas,Monaco,monospace}
+  .it .sc{flex:0 0 auto;color:#2d86c4;font-size:12px}
+  .it .sc.neg{color:#c0392b}
+  .it .cm{flex:1;color:#7a5a20;font-size:12px;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap}
+  .it .key{color:#d9a520}
+  .it .badge{flex:0 0 auto;font-size:11px;background:#eef4fa;color:#2d86c4;
+             border:1px solid #d6e6f5;border-radius:9px;padding:0 6px}
+  .it .badge.warn{background:#fdf3e3;color:#a5701a;border-color:#f0dfc0}
+  .pvrow{display:flex;gap:8px;align-items:baseline;padding:4px 8px;font-size:13px;
+         border-bottom:1px solid #f4f1ea}
+  .engine{font-size:12px;color:#666;line-height:1.9;margin-top:6px}
+  .engine b{color:#333}
+  .aiout{font-size:13px;line-height:1.7;color:#444;margin-top:8px;white-space:pre-wrap}
+  code{font-family:Consolas,Monaco,monospace;font-size:12px;color:#7a5a20}
+</style>
+</head>
+<body>
+<h1>残局研究<a href="/">← 回下棋页</a><a href="/studies">我的棋局</a></h1>
+<p class="sub">摆盘 → 登记局面 → 引擎分析出候选 → 看主变 → 写备注/标关键步；引擎的分数与结论原样展示，棋例结论一律以人工复核为准</p>
+
+<!-- ============ 顶栏: 选已有 / 新建 / 导入导出 ============ -->
+<div class="top">
+  <div class="row">
+    <div><label for="pick">打开已有研究</label>
+      <select id="pick" style="min-width:230px"><option value="">— 选择 —</option></select></div>
+    <button id="refreshPick" class="ghost">刷新列表</button>
+    <span id="studyTitle" style="font-weight:600"></span>
+    <span class="muted" id="studyMeta"></span>
+  </div>
+
+  <div class="box" style="margin:10px 0 0">
+    <h2>新建研究</h2>
+    <div class="row">
+      <div><label for="newPattern">从内置定式（10 个实用残局）</label>
+        <select id="newPattern" style="min-width:220px"><option value="">— 选择定式 —</option></select></div>
+      <button id="newFromPattern" class="ghost">按定式新建</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div style="flex:1 1 320px"><label for="newFen">或者从 FEN 摆一盘</label>
+        <input id="newFen" style="width:100%" placeholder="例: 4k4/4a4/9/9/9/4R4/9/9/9/4K4 w - - 0 1"></div>
+      <div><label for="newName">名字（可留空）</label><input id="newName"></div>
+      <button id="newFromFen" class="ghost">从 FEN 新建</button>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div><label for="newGameId">对局 id</label><input id="newGameId" size="8"></div>
+      <div><label for="newPly">第几手起</label><input id="newPly" size="5" value="0"></div>
+      <button id="newFromGame" class="ghost">从对局续研</button>
+    </div>
+    <div class="status" id="newStatus"></div>
+  </div>
+
+  <div class="row" style="margin-top:8px">
+    <a id="exportLink" class="ghost hidden" style="padding:6px 12px;border:1px solid #ddd0b8;
+       border-radius:4px;text-decoration:none" href="#">⬇ 导出研究（xq-endgame-study v1）</a>
+    <button id="importGo" class="ghost">导入研究文档</button>
+    <input id="importFile" type="file" accept=".json" style="max-width:190px;font-size:12px">
+    <button id="importDo" class="ghost hidden">确认导入</button>
+    <span class="muted">导入会重新校验每一步与每条引擎着法，走不通就整份拒绝</span>
+  </div>
+  <textarea id="importText" rows="3" class="hidden" spellcheck="false"
+            placeholder="把 xq-endgame-study v1 的 JSON 贴进来"></textarea>
+  <div class="status" id="topStatus"></div>
+</div>
+
+<!-- ============ 四栏 ============ -->
+<div class="cols">
+  <!-- 1 摆盘 + 研究树 -->
+  <section class="col">
+    <h2><span>① 摆盘 · 研究树</span><span class="muted" id="plyTag"></span></h2>
+    <div class="board">
+      <svg id="lines" class="lines" viewBox="0 0 900 1000" preserveAspectRatio="none"></svg>
+      <div id="grid" class="grid"></div>
+    </div>
+    <div class="muted" id="posInfo" style="margin-top:6px"></div>
+
+    <div class="palette" id="palette"></div>
+    <div class="row">
+      <button id="opUndo" class="tiny">撤销一个操作</button>
+      <button id="opClear" class="tiny">清空待用操作</button>
+      <span class="muted" id="opsInfo"></span>
+    </div>
+    <div class="row" style="margin-top:6px">
+      <div><label for="toMove">走子方</label>
+        <select id="toMove"><option value="w">红先</option><option value="b">黑先</option></select></div>
+      <button id="boardCheck" class="ghost">预检</button>
+      <button id="boardApply">应用摆盘</button>
+    </div>
+    <div class="status" id="boardStatus"></div>
+
+    <h2 style="margin-top:12px">研究树</h2>
+    <div class="list" id="tree"></div>
+  </section>
+
+  <!-- 2 候选 -->
+  <section class="col">
+    <h2><span>② 候选着法</span><span class="muted" id="engineTag"></span></h2>
+    <div class="row">
+      <div><label for="mode">档位</label>
+        <select id="mode">
+          <option value="quick">quick（边摆边看）</option>
+          <option value="standard">standard（精确分析）</option>
+          <option value="precise">precise（长考）</option>
+        </select></div>
+      <div><label for="multipv">MultiPV</label><input id="multipv" size="3" value="3"></div>
+      <button id="analyzeBtn">分析该局面</button>
+      <button id="cancelBtn" class="ghost" disabled>取消</button>
+    </div>
+    <div class="status" id="taskStatus"></div>
+
+    <h2 style="margin-top:10px">这个局面的分析结果</h2>
+    <div class="row">
+      <label for="posPick" style="margin:0">已有分析</label>
+      <select id="posPick" style="min-width:200px"></select>
+    </div>
+    <div class="list" id="cands"></div>
+    <div class="engine" id="posMeta"></div>
+  </section>
+
+  <!-- 3 主变 -->
+  <section class="col">
+    <h2><span>③ 主变（引擎给的 PV，只读）</span></h2>
+    <div class="engine" id="candMeta">还没有选中的候选着法</div>
+    <div class="list" id="pv" style="max-height:44vh;margin-top:8px"></div>
+    <div class="muted" style="margin-top:6px">主变是引擎算出来的序列，本页只做展示与高亮，不当作“正解”写进研究。</div>
+  </section>
+
+  <!-- 4 备注 -->
+  <section class="col">
+    <h2><span>④ 备注 / 解说</span></h2>
+    <div class="muted" id="moveTitle"></div>
+    <label for="ann" style="margin-top:6px">这一步的备注</label>
+    <textarea id="ann" rows="4" placeholder="选中研究树里的某一步后写备注"></textarea>
+    <div class="row" style="margin-top:6px">
+      <label class="row" style="margin:0;font-size:13px;color:#555">
+        <input type="checkbox" id="isKey" style="width:auto"> 关键步</label>
+      <button id="saveAnn" class="ghost">保存备注</button>
+    </div>
+
+    <h2 style="margin-top:12px">引擎解说</h2>
+    <div class="row">
+      <label class="row" style="margin:0;font-size:13px;color:#555">
+        <input type="checkbox" id="useLlm" style="width:auto"> 用大模型润色</label>
+      <button id="sayBtn" class="ghost">解说这个局面</button>
+      <button id="sayToAnn" class="ghost" disabled>写进备注</button>
+    </div>
+    <div class="aiout" id="sayOut"></div>
+    <div class="muted" id="sayMeta"></div>
+  </section>
+</div>
+
+<script>
+const START_FEN = {{ start_fen | tojson }};
+const OPEN_ID = {{ study_id | tojson }};
+const FILES = 'abcdefghi';
+const NAMES = {K:'帅',A:'仕',B:'相',N:'马',R:'车',C:'炮',P:'兵',
+               k:'将',a:'士',b:'象',n:'马',r:'车',c:'炮',p:'卒'};
+const PIECES = new Set(Object.keys(NAMES));
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+let CSRF = '';
+async function api(url, opts) {
+  const resp = await fetch(url, opts);
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* 非 JSON 响应下面统一报错 */ }
+  if (!resp.ok || !data || data.ok === false) {
+    throw new Error((data && (data.message || data.error)) || ('请求失败 HTTP ' + resp.status));
+  }
+  return data;
+}
+/* 写请求统一带上 CSRF 令牌(见 endgame/csrf.py) */
+function send(url, method, body) {
+  return api(url, {method: method,
+    headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF},
+    body: JSON.stringify(body || {})});
+}
+function say(el, text, isErr) {
+  const node = $(el);
+  node.className = 'status' + (isErr ? ' err' : '');
+  node.textContent = text || '';
+}
+
+/* ================= 棋盘 ================= */
+function fenToGrid(fen) {
+  const rows = String(fen || '').trim().split(/\s+/)[0].split('/');
+  if (rows.length !== 10) throw new Error('FEN 棋盘部分应为 10 行');
+  return rows.map(row => {
+    const cells = [];
+    for (const ch of row) {
+      if (/[0-9]/.test(ch)) { for (let i = 0; i < Number(ch); i++) cells.push(''); }
+      else if (PIECES.has(ch)) cells.push(ch);
+      else throw new Error('无法识别的棋子字符: ' + ch);
+    }
+    if (cells.length !== 9) throw new Error('FEN 每行应为 9 列');
+    return cells;
+  });
+}
+function drawLines() {
+  const svg = $('lines');
+  svg.innerHTML = '';
+  const px = i => 50 + i * 100, py = j => 50 + j * 100;
+  const add = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(SVG_NS, 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    svg.appendChild(l);
+  };
+  for (let j = 0; j < 10; j++) add(px(0), py(j), px(8), py(j));
+  for (let i = 0; i < 9; i++) {
+    if (i === 0 || i === 8) add(px(i), py(0), px(i), py(9));
+    else { add(px(i), py(0), px(i), py(4)); add(px(i), py(5), px(i), py(9)); }
+  }
+  add(px(3), py(9), px(5), py(7)); add(px(5), py(9), px(3), py(7));
+  add(px(3), py(0), px(5), py(2)); add(px(5), py(0), px(3), py(2));
+}
+const sqOf = (r, c) => FILES[c] + (9 - r);
+function rcOf(sq) { return [9 - Number(sq[1]), FILES.indexOf(sq[0])]; }
+
+/** 待用摆盘操作先在本地过一遍, 点一下就能看到效果(校验以后端为准) */
+function applyOpsLocal(grid, ops) {
+  const g = grid.map(row => row.slice());
+  for (const op of ops) {
+    const kind = String(op.op || '').toLowerCase();
+    if (kind === 'clear') { for (const row of g) row.fill(''); continue; }
+    if (kind === 'load') { try { return fenToGrid(op.fen); } catch (e) { continue; } }
+    if (kind === 'set') {
+      const [r, c] = rcOf(op.square);
+      if (g[r] && c >= 0) g[r][c] = op.piece;
+    } else if (kind === 'remove') {
+      const [r, c] = rcOf(op.square);
+      if (g[r]) g[r][c] = '';
+    } else if (kind === 'move') {
+      const [fr, fc] = rcOf(op.from), [tr, tc] = rcOf(op.to);
+      if (g[fr] && g[tr]) { g[tr][tc] = g[fr][fc]; g[fr][fc] = ''; }
+    }
+  }
+  return g;
+}
+function renderBoard(fen, fromSq, toSq) {
+  let g;
+  try { g = applyOpsLocal(fenToGrid(fen), ops); }
+  catch (e) { say('boardStatus', '局面解析失败: ' + e.message, true); return; }
+  const from = fromSq ? rcOf(fromSq) : null, to = toSq ? rcOf(toSq) : null;
+  const el = $('grid');
+  el.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 9; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (from && from[0] === r && from[1] === c) cell.classList.add('hl-from');
+      if (to && to[0] === r && to[1] === c) cell.classList.add('hl-to');
+      if (moveFrom === sqOf(r, c)) cell.classList.add('pick');
+      const p = g[r][c];
+      if (p) {
+        const d = document.createElement('div');
+        d.className = 'piece ' + (p === p.toUpperCase() ? 'red' : 'black');
+        d.textContent = NAMES[p] || p;
+        cell.appendChild(d);
+      }
+      cell.addEventListener('click', () => onCellClick(sqOf(r, c)));
+      el.appendChild(cell);
+    }
+  }
+}
+
+/* ================= 状态 ================= */
+let study = null, moves = [], positions = [], tasks = [];
+let ply = 0, current = null, cands = [], chosen = null;
+let ops = [], palette = '', moveFrom = null, pollTimer = null, running = null;
+
+function fenAt(p) {
+  if (!study) return START_FEN;
+  if (p <= 0) return study.startFen || START_FEN;
+  return (moves[p - 1] && moves[p - 1].fenAfter) || study.startFen || START_FEN;
+}
+
+function renderAll() {
+  renderBoard(fenAt(ply),
+    chosen ? chosen.from : null, chosen ? chosen.to : null);
+  renderPalette();
+  $('plyTag').textContent = study ? (ply === 0 ? '起始局面' : '第 ' + ply + ' 手之后') : '';
+  $('posInfo').textContent = '当前显示：' + fenAt(ply) +
+    '（轮' + (fenAt(ply).split(/\s+/)[1] === 'b' ? '黑方' : '红方') + '）';
+  renderTree();
+  renderPositionPicker();
+  renderCandidates();
+  renderPv();
+  renderMoveBox();
+  $('opsInfo').textContent = ops.length ? ('待用操作 ' + ops.length + ' 个') : '没有待用操作';
+}
+
+/* ================= 研究树 ================= */
+function moveAt(p) { return p > 0 ? moves[p - 1] : null; }
+
+function renderTree() {
+  const box = $('tree');
+  box.innerHTML = '';
+  if (!study) { box.innerHTML = '<div class="muted" style="padding:8px">还没有打开研究</div>'; return; }
+  const mk = () => {
+    const row = document.createElement('div');
+    row.className = 'it';
+    row.addEventListener('click', () => selectPly(Number(row.dataset.p)));
+    box.appendChild(row);
+    return row;
+  };
+  const start = mk();
+  start.dataset.p = 0;
+  start.innerHTML = '<span class="no">开局</span><span class="cn">起始局面</span>' +
+    '<span class="ic">' + esc((study.startFen || '').split(/\s+/)[0]) + '</span>';
+  moves.forEach((m, i) => {
+    const p = i + 1;
+    const row = mk();
+    row.dataset.p = p;
+    let sc = '';
+    if (m.scoreMate !== null && m.scoreMate !== undefined) {
+      sc = '<span class="sc' + (m.scoreMate < 0 ? ' neg' : '') + '">杀 ' + m.scoreMate + '</span>';
+    } else if (m.scoreCp !== null && m.scoreCp !== undefined) {
+      sc = '<span class="sc' + (m.scoreCp < 0 ? ' neg' : '') + '">' +
+           (m.scoreCp > 0 ? '+' : '') + m.scoreCp + '</span>';
+    }
+    const n = positionsAt(p).length;
+    row.innerHTML = '<span class="no">' + p + '.</span>' +
+      '<span class="cn">' + esc(m.san || '') + '</span>' +
+      '<span class="ic">' + esc(m.uci || '') + '</span>' + sc +
+      (m.isKey ? '<span class="key">★</span>' : '') +
+      (m.annotation ? '<span class="cm">' + esc(m.annotation) + '</span>' : '<span class="cm"></span>') +
+      (n ? '<span class="badge">分析 ' + n + '</span>' : '');
+    if (p === ply) row.classList.add('on');
+  });
+  const on = box.querySelector('.it.on');
+  if (on) on.scrollIntoView({block: 'nearest'});
+}
+
+function positionsAt(p) { return positions.filter(item => item.ply === p); }
+
+/** 同一局面会有多条分析(不同档位/规则), 最新的是 positionId 最大的那条 */
+function newestPosition(list) {
+  return list.reduce((a, b) => (!a || b.positionId > a.positionId) ? b : a, null);
+}
+
+function selectPly(p) {
+  ply = Math.max(0, Math.min(p, moves.length));
+  const list = positionsAt(ply);
+  current = newestPosition(list);
+  cands = current ? (current.candidates || []) : [];
+  chosen = cands.length ? cands[0] : null;
+  renderAll();
+}
+
+/* ================= 候选 / 主变 ================= */
+function renderPositionPicker() {
+  const sel = $('posPick');
+  const list = positionsAt(ply);
+  sel.innerHTML = '';
+  if (!list.length) {
+    sel.innerHTML = '<option value="">（这个局面还没有分析结果）</option>';
+    sel.disabled = true;
+    return;
+  }
+  sel.disabled = false;
+  const latest = newestPosition(list);
+  list.forEach(item => {
+    const o = document.createElement('option');
+    o.value = String(item.positionId);
+    o.textContent = '#' + item.positionId + ' · depth ' + item.depth +
+      ' · MultiPV ' + item.multipv + ' · ' + (item.confidence || '') +
+      (latest && item.positionId === latest.positionId ? '（最新）' : '');
+    sel.appendChild(o);
+  });
+  sel.value = String((current || latest).positionId);
+}
+
+function renderCandidates() {
+  const box = $('cands');
+  box.innerHTML = '';
+  $('posMeta').innerHTML = '';
+  if (!current) {
+    box.innerHTML = '<div class="muted" style="padding:8px">先点右边「分析该局面」</div>';
+    return;
+  }
+  const pos = current;
+  $('posMeta').innerHTML =
+    '引擎 <b>' + esc(pos.engineVersion || '?') + '</b>' +
+    (pos.nnueFile ? '（NNUE ' + esc(pos.nnueFile) + '）' : '') + '<br>' +
+    '深度 <b>' + esc(pos.depth) + '</b>（实际选深 ' + esc(pos.seldepth) + '）· 限时 <b>' +
+    esc(pos.movetimeMs) + '</b> ms · MultiPV <b>' + esc(pos.multipv) + '</b><br>' +
+    '首选 <b>' + esc(pos.bestmove || '无') + '</b> · 评分 <b>' +
+    esc(scoreText(pos.scoreType, pos.scoreValue)) + '</b>（score_type=' +
+    esc(pos.scoreType) + ', score_value=' + esc(pos.scoreValue) + '）<br>' +
+    '结论 <b>' + esc(pos.result) + '</b> · 可信度 <b>' + esc(pos.confidence) + '</b> · 规则集 ' +
+    esc(pos.repetitionRule) + '<br>' +
+    '棋例复核 <b>' + esc(pos.ruleReviewStatus) + '</b>' +
+    (pos.needsRuleReview ? '（引擎的和棋/重复信号只当候选，需人工复核）' : '');
+
+  if (!cands.length) {
+    box.innerHTML = '<div class="muted" style="padding:8px">这次分析没有可用候选着法</div>';
+    return;
+  }
+  cands.forEach((c, i) => {
+    const row = document.createElement('div');
+    row.className = 'it' + (chosen && chosen.candidateId === c.candidateId ? ' on' : '');
+    row.innerHTML = '<span class="no">' + esc(c.rank) + '.</span>' +
+      '<span class="cn">' + esc((c.san && c.san[0]) || '') + '</span>' +
+      '<span class="ic">' + esc(c.moveUci) + '</span>' +
+      '<span class="sc' + (c.scoreType === 'cp' && c.scoreValue < 0 ? ' neg' : '') + '">' +
+        esc(scoreText(c.scoreType, c.scoreValue)) + '</span>' +
+      (c.isKey ? '<span class="key">★</span>' : '') +
+      '<span class="cm">' + esc((c.pv || []).join(' ')) + '</span>' +
+      (c.visitedNodes ? '<span class="badge">' + c.visitedNodes + ' 节点</span>' : '');
+    row.addEventListener('click', () => {
+      chosen = c;
+      renderAll();
+    });
+    box.appendChild(row);
+  });
+  if (chosen) {
+    const on = box.querySelector('.it.on');
+    if (on) on.scrollIntoView({block: 'nearest'});
+  }
+}
+
+function scoreText(type, value) {
+  if (type === 'mate' && value !== null && value !== undefined) {
+    return (value > 0 ? '杀 ' + value : '被杀 ' + Math.abs(value));
+  }
+  if (type === 'cp' && value !== null && value !== undefined) {
+    return (value > 0 ? '+' : '') + value + ' 厘兵';
+  }
+  if (type === 'draw') return '接近和棋（0 分档）';
+  return type || '未知';
+}
+
+function renderPv() {
+  const box = $('pv');
+  box.innerHTML = '';
+  if (!chosen) {
+    $('candMeta').textContent = '还没有选中的候选着法';
+    return;
+  }
+  $('candMeta').innerHTML = '选中 <b>' + esc(chosen.moveUci) + '</b> ' +
+    esc((chosen.san && chosen.san[0]) || '') + ' · 评分 <b>' +
+    esc(scoreText(chosen.scoreType, chosen.scoreValue)) + '</b>' +
+    (chosen.matePlies !== null && chosen.matePlies !== undefined
+      ? ' · 杀 ' + esc(chosen.matePlies) + ' 步' : '');
+  const pv = chosen.pv || [], san = chosen.san || [];
+  if (!pv.length) {
+    box.innerHTML = '<div class="muted" style="padding:8px">这条候选没有主变</div>';
+    return;
+  }
+  pv.forEach((uci, i) => {
+    const row = document.createElement('div');
+    row.className = 'pvrow';
+    row.innerHTML = '<span class="no" style="flex:0 0 30px;color:#aaa;font-size:12px">' +
+      (i + 1) + '.</span><span class="cn" style="font-weight:600">' +
+      esc(san[i] || '') + '</span><span class="ic" style="color:#aaa;font-size:12px;' +
+      'font-family:Consolas,Monaco,monospace">' + esc(uci) + '</span>';
+    box.appendChild(row);
+  });
+}
+
+/* ================= 备注 / 解说 ================= */
+function renderMoveBox() {
+  const mv = moveAt(ply);
+  $('moveTitle').textContent = mv
+    ? ('第 ' + ply + ' 步：' + (mv.san || '') + '（' + (mv.uci || '') + '）')
+    : '开局（还没有着法，备注写在具体某一步上）';
+  $('ann').value = mv ? (mv.annotation || '') : '';
+  $('ann').disabled = !mv;
+  $('saveAnn').disabled = !mv;
+  $('isKey').checked = !!(mv && mv.isKey);
+  $('isKey').disabled = !mv;
+}
+
+async function saveAnn() {
+  const mv = moveAt(ply);
+  if (!mv || !study) return;
+  try {
+    const d = await send('/api/studies/' + study.studyId + '/moves/' + mv.moveId,
+                         'PATCH', {annotation: $('ann').value, isKey: $('isKey').checked});
+    mv.annotation = d.move.annotation;
+    mv.isKey = d.move.isKey;
+    renderTree();
+    say('boardStatus', '备注已保存到第 ' + ply + ' 步');
+  } catch (e) { say('boardStatus', e.message, true); }
+}
+
+let lastSay = '';
+async function doExplain() {
+  if (!study) return;
+  $('sayBtn').disabled = true;
+  say('sayMeta', '');
+  $('sayOut').textContent = '生成中…';
+  try {
+    const d = await send('/api/studies/' + study.studyId + '/commentary', 'POST',
+                         {ply: ply, useLlm: $('useLlm').checked});
+    lastSay = d.text;
+    $('sayOut').textContent = d.text;
+    $('sayMeta').innerHTML = (d.llmUsed
+        ? '大模型转述（prompt ' + esc(d.promptVersion) + '）'
+        : '模板解说（未用大模型：' + esc(d.fallbackReason || '') + '）') +
+      '　' + esc(d.disclaimer) +
+      (d.inventedMoves && d.inventedMoves.length
+        ? '<br>检测到引擎数据之外的坐标，已整条作废：' + esc(d.inventedMoves.join(' ')) : '');
+    $('sayToAnn').disabled = !moveAt(ply);
+  } catch (e) {
+    $('sayOut').textContent = '解说失败: ' + e.message;
+  } finally {
+    $('sayBtn').disabled = false;
+  }
+}
+
+/* ================= 分析 ================= */
+async function doAnalyze() {
+  if (!study) return;
+  const body = {fromPly: ply, mode: $('mode').value};
+  const mpv = Number($('multipv').value);
+  if (mpv > 0) body.multipv = mpv;
+  $('analyzeBtn').disabled = true;
+  say('taskStatus', '登记位置节点…');
+  try {
+    const node = await send('/api/studies/' + study.studyId + '/positions', 'POST', body);
+    const task = await send('/api/studies/' + study.studyId + '/positions/' +
+                            node.taskId + '/analyze', 'POST', {});
+    running = task.taskId;
+    $('cancelBtn').disabled = false;
+    say('taskStatus', '已排队：' + task.taskId);
+    poll(task.taskId);
+  } catch (e) {
+    $('analyzeBtn').disabled = false;
+    say('taskStatus', e.message, true);
+  }
+}
+
+function poll(taskId) {
+  clearTimeout(pollTimer);
+  pollTimer = setTimeout(async () => {
+    try {
+      const d = await api('/api/studies/' + study.studyId + '/analysis/' + taskId);
+      const p = d.progress || {};
+      say('taskStatus', '[' + d.status + ']' +
+        (p.depth ? ' 深度 ' + p.depth : '') +
+        (p.seldepth ? '/' + p.seldepth : '') +
+        (d.partialBest ? ' · 当前最佳 ' + d.partialBest : '') +
+        (d.message ? ' · ' + d.message : ''));
+      if (d.status === 'completed') {
+        running = null;
+        $('cancelBtn').disabled = true;
+        $('analyzeBtn').disabled = false;
+        await reloadStudy();
+        const list = positionsAt(ply);
+        const latest = newestPosition(list);
+        if (latest) {
+          current = latest;
+          cands = current.candidates || [];
+          chosen = cands.length ? cands[0] : null;
+          renderAll();
+        }
+        return;
+      }
+      if (['failed', 'cancelled', 'superseded'].includes(d.status)) {
+        running = null;
+        $('cancelBtn').disabled = true;
+        $('analyzeBtn').disabled = false;
+        return;
+      }
+      poll(taskId);
+    } catch (e) {
+      say('taskStatus', e.message, true);
+      $('analyzeBtn').disabled = false;
+    }
+  }, 400);
+}
+
+async function doCancel() {
+  if (!study || !running) return;
+  try {
+    const d = await send('/api/studies/' + study.studyId + '/analysis/' + running,
+                         'DELETE', {});
+    say('taskStatus', '已请求取消：' + d.status);
+  } catch (e) { say('taskStatus', e.message, true); }
+}
+
+/* ================= 摆盘 ================= */
+function onCellClick(sq) {
+  if (!study) return;
+  if (palette === '') {
+    if (moveFrom === null) {
+      const [r, c] = rcOf(sq);
+      if (fenToGrid(fenAt(ply))[r][c]) { moveFrom = sq; renderAll(); }
+      return;
+    }
+    ops.push({op: 'move', from: moveFrom, to: sq});
+    moveFrom = null;
+    renderAll();
+    return;
+  }
+  if (palette === 'X') ops.push({op: 'remove', square: sq});
+  else ops.push({op: 'set', square: sq, piece: palette});
+  renderAll();
+}
+
+function renderPalette() {
+  const box = $('palette');
+  box.innerHTML = '';
+  const items = ['K','A','B','N','R','C','P', 'k','a','b','n','r','c','p','X'];
+  for (const p of items) {
+    const b = document.createElement('button');
+    b.textContent = p === 'X' ? '擦' : NAMES[p];
+    b.className = (p === p.toUpperCase() && p !== 'X' ? 'red ' : '') +
+                  (palette === p ? 'on' : '');
+    b.title = p === 'X' ? '橡皮：点格子拿掉棋子'
+      : '选中后点格子放子；不选棋子时点两次可拖动棋子';
+    b.addEventListener('click', () => {
+      palette = palette === p ? '' : p;
+      moveFrom = null;
+      renderAll();
+    });
+    box.appendChild(b);
+  }
+}
+
+async function boardCall(validateOnly) {
+  if (!study) return;
+  const body = {operations: ops, toMove: $('toMove').value};
+  if (validateOnly) body.validateOnly = true;
+  try {
+    const d = await send('/api/studies/' + study.studyId + '/board', 'PUT', body);
+    if (validateOnly) {
+      say('boardStatus', d.legal
+        ? ('预检通过：合法局面，轮' + (d.sideToMove === 'b' ? '黑方' : '红方') +
+           '，共 ' + d.pieceCount + ' 枚棋子' +
+           (d.warnings && d.warnings.length ? '；' + d.warnings.join('；') : ''))
+        : ('预检不通过：' + (d.errors || []).map(e => e.message).join('；')),
+        !d.legal);
+      return;
+    }
+    ops = []; moveFrom = null; palette = '';
+    renderPalette();
+    if (d.created) {
+      say('boardStatus', '研究已有着法，摆盘另存为新研究 #' + d.study.studyId);
+      location.href = '/study/' + d.study.studyId;
+      return;
+    }
+    say('boardStatus', '摆盘已保存' +
+      (d.warnings && d.warnings.length ? '；' + d.warnings.join('；') : ''));
+    await reloadStudy();
+  } catch (e) { say('boardStatus', e.message, true); }
+}
+
+/* ================= 打开 / 新建 / 导入导出 ================= */
+async function loadStudyList() {
+  const d = await api('/api/studies?limit=100');
+  const sel = $('pick');
+  sel.innerHTML = '<option value="">— 选择 —</option>';
+  for (const s of d.studies) {
+    const o = document.createElement('option');
+    o.value = String(s.studyId);
+    o.textContent = (s.name || ('#' + s.studyId)) + '（' + s.category + '，' + 
+      (s.moveCount || 0) + ' 步，分析 ' + (s.analysisCount || 0) + '）';
+    sel.appendChild(o);
+  }
+  if (study) sel.value = String(study.studyId);
+}
+
+async function reloadStudy() {
+  const d = await api('/api/studies/' + study.studyId);
+  study = d.study; moves = d.moves || []; positions = d.positions || [];
+  tasks = d.tasks || [];
+  const eng = d.engine || {};
+  $('engineTag').textContent = eng.resident ? '常驻引擎已就绪' : '按需起引擎';
+  $('studyTitle').textContent = study.name || ('#' + study.studyId);
+  $('studyMeta').textContent = [study.category, '共 ' + moves.length + ' 步',
+    '分析 ' + positions.length + ' 条', '规则集 ' + (study.ruleSet || '')].join(' · ');
+  $('exportLink').classList.remove('hidden');
+  $('exportLink').href = '/api/studies/' + study.studyId + '/export?download=1';
+  renderAll();
+}
+
+async function openStudy(id) {
+  try {
+    study = {studyId: Number(id)};
+    await reloadStudy();
+    await loadStudyList();
+    ply = moves.length;
+    selectPly(ply);
+    say('topStatus', '');
+  } catch (e) { say('topStatus', e.message, true); }
+}
+
+async function createStudy(body) {
+  try {
+    const d = await send('/api/studies', 'POST', body);
+    say('newStatus', '已建研究 #' + d.study.studyId +
+      (d.warnings && d.warnings.length ? '；' + d.warnings.join('；') : ''));
+    location.href = '/study/' + d.study.studyId;
+  } catch (e) { say('newStatus', e.message, true); }
+}
+
+async function loadPatterns() {
+  const d = await api('/api/patterns');
+  const sel = $('newPattern');
+  sel.innerHTML = '<option value="">— 选择定式 —</option>';
+  for (const p of d.patterns) {
+    const o = document.createElement('option');
+    o.value = p.patternId;
+    o.textContent = p.name + '（' + p.result + '）· ' + p.goal.slice(0, 24) + '…';
+    o.title = p.goal + '｜' + p.resultNote;
+    sel.appendChild(o);
+  }
+}
+
+async function doImport() {
+  const content = $('importText').value.trim();
+  if (!content) { say('topStatus', '先把文档贴进文本框或选文件', true); return; }
+  try {
+    const d = await send('/api/studies/import', 'POST', {content: content});
+    say('topStatus', '导入成功 #' + d.studyId + '（' + d.moveCount + ' 步 / ' +
+      d.positionCount + ' 条分析）' +
+      (d.warnings && d.warnings.length ? '\n' + d.warnings.join('\n') : ''));
+    location.href = '/study/' + d.studyId;
+  } catch (e) { say('topStatus', e.message, true); }
+}
+
+/* ================= 绑定 ================= */
+$('pick').addEventListener('change', e => { if (e.target.value) openStudy(e.target.value); });
+$('refreshPick').addEventListener('click', loadStudyList);
+$('newFromPattern').addEventListener('click', () => {
+  const id = $('newPattern').value;
+  if (!id) { say('newStatus', '先选一个定式', true); return; }
+  createStudy({patternId: id, name: $('newName').value.trim() || undefined});
+});
+$('newFromFen').addEventListener('click', () => {
+  const fen = $('newFen').value.trim();
+  if (!fen) { say('newStatus', '先填 FEN', true); return; }
+  createStudy({fen: fen, name: $('newName').value.trim() || undefined});
+});
+$('newFromGame').addEventListener('click', () => {
+  const gameId = Number($('newGameId').value);
+  if (!gameId) { say('newStatus', '先填对局 id', true); return; }
+  createStudy({gameId: gameId, ply: Number($('newPly').value) || 0});
+});
+$('importGo').addEventListener('click', () => {
+  $('importText').classList.remove('hidden');
+  $('importDo').classList.remove('hidden');
+  $('importText').focus();
+});
+$('importDo').addEventListener('click', doImport);
+$('importFile').addEventListener('change', async () => {
+  const f = $('importFile').files[0];
+  if (!f) return;
+  $('importText').classList.remove('hidden');
+  $('importDo').classList.remove('hidden');
+  $('importText').value = await f.text();
+});
+$('opUndo').addEventListener('click', () => { ops.pop(); moveFrom = null; renderAll(); });
+$('opClear').addEventListener('click', () => { ops = []; moveFrom = null; renderAll(); });
+$('boardCheck').addEventListener('click', () => boardCall(true));
+$('boardApply').addEventListener('click', () => boardCall(false));
+$('analyzeBtn').addEventListener('click', doAnalyze);
+$('cancelBtn').addEventListener('click', doCancel);
+$('posPick').addEventListener('change', e => {
+  const hit = positionsAt(ply).find(p => String(p.positionId) === e.target.value);
+  if (!hit) return;
+  current = hit;
+  cands = hit.candidates || [];
+  chosen = cands.length ? cands[0] : null;
+  renderAll();
+});
+$('saveAnn').addEventListener('click', saveAnn);
+$('isKey').addEventListener('change', saveAnn);
+$('sayBtn').addEventListener('click', doExplain);
+$('sayToAnn').addEventListener('click', () => {
+  if (!lastSay || !moveAt(ply)) return;
+  const box = $('ann');
+  box.value = (box.value ? box.value.replace(/\s*$/, '\n') : '') + lastSay;
+  say('sayMeta', '已放进备注草稿，点「保存备注」才算写进研究');
+});
+
+(async function init() {
+  try {
+    CSRF = (await api('/api/studies/csrf')).token;
+  } catch (e) { say('topStatus', '取 CSRF 令牌失败: ' + e.message, true); }
+  renderPalette();
+  drawLines();
+  await loadPatterns();
+  await loadStudyList();
+  if (OPEN_ID) openStudy(OPEN_ID);
+})();
+</script>
+</body>
+</html>

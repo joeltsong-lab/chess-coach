@@ -6,12 +6,14 @@
     python app.py
     浏览器打开 http://127.0.0.1:5000          (下棋 / 分析)
              或 http://127.0.0.1:5000/studies (我的棋局 / 复盘)
+             或 http://127.0.0.1:5000/study   (残局研究: 摆盘/候选/主变/备注)
 
 接口:
     POST /api/analyze        分析棋面, 返回最佳着法/PV (给"分析"按钮用)
     POST /api/ai_hint        AI 提示下一步: 引擎 MultiPV 候选 + LLM 二次筛选 (给"AI提示"按钮用)
     POST /api/engine_config  运行期调整引擎参数 (Threads / Hash / MultiPV / 默认思考时间)
     /api/games/*             棋局保存、续下、列表、复盘、导出导入 (见 games_routes.py)
+    /api/studies/*           残局研究: 建研究/摆盘/分析任务/候选着法 (见 endgame/routes.py)
 """
 
 import atexit
@@ -32,6 +34,7 @@ from chess_engine import (
     START_FEN,
 )
 from coord_utils import GRID_ORIENTATION, iccs_to_chinese, iccs_to_grid, parse_fen, pv_to_chinese
+from endgame import routes as endgame_routes
 from explainer import llm_configured, pick_best_move
 
 app = Flask(__name__)
@@ -81,6 +84,7 @@ def get_engine() -> ChessEngine:
 @atexit.register
 def _shutdown_engine() -> None:
     global _engine
+    endgame_routes.shutdown()      # 先收掉后台分析线程与专用引擎进程
     if _engine is not None:
         _engine.quit()
         _engine = None
@@ -98,6 +102,9 @@ def _read_movetime(payload: dict, default: int, maximum: int) -> int:
 # 棋局保存/复盘蓝图: 建表 + 注册路由, 并把引擎访问方式注入过去(打分要用, 复用同一个引擎进程)
 games_routes.init_app(app, get_engine=get_engine, analyze_lock=_analyze_lock)
 
+# 残局研究蓝图: 建后台分析队列 + 引擎池(快分析复用上面那个常驻引擎进程)
+endgame_routes.init_app(app, get_engine=get_engine)
+
 
 @app.route("/")
 def index():
@@ -108,6 +115,13 @@ def index():
 def studies():
     """我的棋局: 列表 / 复盘 / 导入导出"""
     return render_template("studies.html", start_fen=START_FEN)
+
+
+@app.route("/study")
+@app.route("/study/<int:study_id>")
+def study(study_id=None):
+    """残局研究: 摆盘 / 候选 / 主变 / 备注 四栏 + 研究树"""
+    return render_template("study.html", start_fen=START_FEN, study_id=study_id)
 
 
 @app.route("/api/analyze", methods=["POST"])

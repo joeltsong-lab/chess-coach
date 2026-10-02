@@ -88,8 +88,16 @@ class ChessEngine:
         self._queue: queue.Queue = queue.Queue()
         self._reader: threading.Thread | None = None
         self._write_lock = threading.Lock()
+        # 同一个进程内串行化搜索: 引擎共用一条 stdout, 两个线程同时搜索会互相偷输出。
+        # 需要真并发就多开引擎实例 (见 endgame/tasks.py 的引擎池)。
+        self._search_lock = threading.Lock()
         self._nnue_loaded = False
         self._multipv = 1  # 当前 MultiPV 设置, 由 configure_engine() 决定
+
+        # uci 握手时收集到的身份与选项 (search() 之前要确认选项存不存在)
+        self.engine_name = ""
+        self.engine_author = ""
+        self.options: dict[str, dict] = {}
 
     # ------------------------------------------------------------------
     # 进程管理
@@ -127,12 +135,97 @@ class ChessEngine:
             raise EngineError(f"启动引擎失败: {e}\n{download_hint(self.engine_path)}") from e
 
         self._nnue_loaded = False  # 每个新进程都要重新加载权重
+        self.engine_name = ""
+        self.engine_author = ""
+        self.options = {}
         self._queue = queue.Queue()
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
+        self._handshake()
+
+    def _handshake(self) -> None:
+        """uci 握手: 收集 id name / id author / option 列表, 一直读到 uciok
+
+        顺手把引擎真正支持的选项记下来 —— Pikafish 各版本选项差别很大
+        (比如 2026-09-06 版就没有 Repetition Rule / Mate Threat Depth),
+        不记录的话后面 setoption 会静默失效, 排查起来很费劲。
+        """
         self.send_command("uci")
-        self.wait_for("uciok", timeout=15)
+        deadline = time.time() + 15
+        while True:
+            remain = deadline - time.time()
+            if remain <= 0:
+                raise EngineError("等待引擎 uciok 超时 (15.0s)")
+            line = self.read_line(timeout=remain)
+            if line.startswith("id name "):
+                self.engine_name = line[len("id name "):].strip()
+            elif line.startswith("id author "):
+                self.engine_author = line[len("id author "):].strip()
+            elif line.startswith("option "):
+                parsed = self._parse_option(line)
+                if parsed:
+                    self.options[parsed["name"]] = parsed
+            elif line.startswith("uciok"):
+                return
+
+    @staticmethod
+    def _parse_option(line: str) -> dict | None:
+        """解析一行 "option name X type Y default Z [min A] [max B] [var V]..." """
+        tokens = line.split()
+        if len(tokens) < 4 or tokens[1] != "name":
+            return None
+        try:
+            type_at = tokens.index("type")
+        except ValueError:
+            return None
+        name = " ".join(tokens[2:type_at])
+        kind = tokens[type_at + 1]
+        out = {"name": name, "type": kind, "default": None, "min": None, "max": None,
+               "vars": []}
+        i = type_at + 2
+        while i < len(tokens):
+            key = tokens[i]
+            if key in ("default", "min", "max") and i + 1 < len(tokens):
+                value = tokens[i + 1]
+                if key == "default":
+                    out["default"] = value
+                elif key == "min":
+                    out["min"] = value
+                else:
+                    out["max"] = value
+                i += 2
+            elif key == "var" and i + 1 < len(tokens):
+                out["vars"].append(tokens[i + 1])
+                i += 2
+            else:
+                i += 1
+        return out
+
+    def supports(self, name: str) -> bool:
+        """引擎是否声明了这个 UCI 选项"""
+        return name in self.options
+
+    def set_option(self, name: str, value) -> bool:
+        """设置 UCI 选项; 引擎不认识这个选项时返回 False 并跳过(不会瞎发命令)
+
+        发一个引擎没有的 setoption, Pikafish 会静默忽略, 表面上"设置成功了",
+        实际什么都没发生 —— 所以这里先对着 options 名单核一遍。
+        """
+        if self.proc is None or self.proc.poll() is not None:
+            self.start_engine()
+        if not self.supports(name):
+            return False
+        self.send_command(f"setoption name {name} value {value}")
+        return True
+
+    def version_info(self) -> dict:
+        """引擎身份 + 权重文件, 用于在分析结果里回显"这次是谁算的\""""
+        return {"engine": self.engine_name or os.path.basename(self.engine_path),
+                "author": self.engine_author,
+                "path": self.engine_path,
+                "nnue_file": os.path.basename(self.nnue_path) if self._nnue_loaded else "",
+                "options": sorted(self.options)}
 
     def send_command(self, cmd: str) -> None:
         """向引擎发送单行命令"""
@@ -166,6 +259,20 @@ class ChessEngine:
             line = self._queue.get(timeout=timeout)
         except queue.Empty:
             raise EngineError(f"等待引擎输出超时 ({timeout:.1f}s)")
+        if line is None:
+            raise EngineError("引擎进程已意外退出 (崩溃或被杀)")
+        return line
+
+    def poll_line(self, timeout: float = 0.2) -> str | None:
+        """读一行引擎输出; 超时返回 None(而不是抛异常), 进程结束抛 EngineError
+
+        搜索过程中要一边读一边判断"用户是不是按了取消", 用 read_line() 的话
+        没有输出就得靠超时异常来兜, 很难写。
+        """
+        try:
+            line = self._queue.get(timeout=timeout)
+        except queue.Empty:
+            return None
         if line is None:
             raise EngineError("引擎进程已意外退出 (崩溃或被杀)")
         return line
@@ -311,6 +418,117 @@ class ChessEngine:
             "depth": primary["depth"],
         }
 
+    # ------------------------------------------------------------------
+    # 通用搜索 (残局研究用)
+    # ------------------------------------------------------------------
+    def search(self, position: str, *, depth: int | None = None,
+               movetime: int | None = None, multipv: int | None = None,
+               searchmoves: list | None = None, cancel=None,
+               on_info=None, timeout_ms: int | None = None) -> dict:
+        """通用 UCI 搜索: 支持 depth / movetime / MultiPV / searchmoves / 中途取消
+
+        与 analyze() 的区别:
+          * analyze() 只管"给我几路候选", 适合下棋界面点一下就出结果;
+          * search() 是给残局研究用的, 要能限深度、限根节点着法、还要能中途喊停,
+            并且把 info 行里的 seldepth/nodes/nps 一并带回来存档。
+        searchmoves 是"受控变着"的基础: 限定根节点只走某一着, 就能单独给那一着定分。
+
+        :param position: UCI position 命令的参数部分, 例如
+            "fen <fen>"  或  "startpos moves h2e2 h9g7"
+        :param depth: go depth N
+        :param movetime: go movetime N (毫秒); 与 depth 同时给时引擎谁先满足谁停
+        :param multipv: 本次 MultiPV 路数; None 表示沿用 configure_engine 的设置
+        :param searchmoves: 限定根节点着法 (ICCS 字符串列表)
+        :param cancel: threading.Event; 置位后立刻发 stop, 已算出的部分照常返回
+        :param on_info: 每解析到一条 info 回调一次(用于上报进度)
+        :param timeout_ms: 整体超时(毫秒); 不传则按 movetime + 90s / 1800s 兜底
+        :return: {"bestmove", "lines":[{multipv,depth,seldepth,score,mate,bound,
+                  pv,nodes,nps,time_ms}], "info_count", "stopped", "duration_ms"}
+        """
+        if not depth and not movetime:
+            raise EngineError("search() 至少要给 depth 或 movetime 之一")
+        if not (position or "").strip():
+            raise EngineError("position 不能为空")
+
+        started = time.time()
+        self.start_engine()
+        if not self._nnue_loaded and self.nnue_path and os.path.isfile(self.nnue_path):
+            self.set_nnue(self.nnue_path)
+
+        want = max(1, int(multipv)) if multipv else self._multipv
+        root_moves = [m.strip() for m in (searchmoves or []) if (m or "").strip()]
+
+        # 一条 stdout 只能有一个读者, 所以同一实例上的搜索必须串行
+        with self._search_lock:
+            self.send_command("ucinewgame")
+            # MultiPV 是核心参数, 直接发(与 analyze() 一致); 规则类开关走 set_option(),
+            # 引擎不认识就跳过并在结果里如实回报
+            self.send_command(f"setoption name MultiPV value {want}")
+            self.send_command("isready")
+            self.wait_for("readyok", timeout=60)
+
+            self.send_command(f"position {position.strip()}")
+            go = ["go"]
+            if depth:
+                go += ["depth", str(int(depth))]
+            if movetime:
+                go += ["movetime", str(int(movetime))]
+            if root_moves:
+                go.append("searchmoves")
+                go += root_moves
+            self.send_command(" ".join(go))
+
+            # 时限留足余量, 免得引擎还在算就被判超时
+            if timeout_ms:
+                budget = int(timeout_ms) / 1000.0
+            elif movetime:
+                budget = int(movetime) / 1000.0 + 90.0
+            else:
+                budget = 1800.0
+            deadline = time.time() + budget
+            lines_by_pv: dict[int, dict] = {}
+            bestmove = None
+            info_count = 0
+            stopped = False
+
+            while True:
+                if cancel is not None and cancel.is_set() and not stopped:
+                    stopped = True
+                    self.send_command("stop")
+                    deadline = time.time() + 10.0   # stop 之后必须很快回 bestmove
+                line = self.poll_line(timeout=0.2)
+                if line is None:
+                    if time.time() <= deadline:
+                        continue
+                    if not stopped:
+                        stopped = True
+                        self.send_command("stop")
+                        deadline = time.time() + 10.0
+                        continue
+                    raise EngineError("等待引擎 bestmove 超时")
+                if "CRITICAL ERROR" in line:
+                    raise EngineError(f"引擎拒绝了该局面或命令: {line}")
+                if line.startswith("bestmove"):
+                    parts = line.split()
+                    bestmove = parts[1] if len(parts) > 1 else None
+                    break
+                if line.startswith("info"):
+                    info_count += 1
+                    parsed = self._parse_info(line)
+                    if parsed["pv"]:
+                        lines_by_pv[parsed["multipv"]] = parsed
+                    if on_info is not None:
+                        on_info(parsed)
+
+        return {
+            "bestmove": bestmove,
+            "lines": [lines_by_pv[rank] for rank in sorted(lines_by_pv)],
+            "info_count": info_count,
+            "stopped": stopped,
+            "duration_ms": int((time.time() - started) * 1000),
+            "engine": self.version_info(),
+        }
+
     def dynamic_movetime(self, fen: str) -> int:
         """按剩余子力数决定思考时间(毫秒)。
 
@@ -328,8 +546,15 @@ class ChessEngine:
 
     @staticmethod
     def _parse_info(line: str) -> dict:
-        """解析一行 info 输出, 提取 multipv / depth / score / mate / pv"""
-        info = {"multipv": 1, "depth": None, "score": None, "mate": None, "pv": []}
+        """解析一行 info 输出
+
+        提取 multipv / depth / seldepth / score cp|mate / bound / nodes / nps /
+        time / hashfull / pv。score 与 mate 同时只有一个非 None：
+        cp 存进 "score", mate 存进 "mate"。
+        """
+        info = {"multipv": 1, "depth": None, "seldepth": None, "score": None,
+                "mate": None, "bound": None, "pv": [], "nodes": None, "nps": None,
+                "time_ms": None, "hashfull": None}
         tokens = line.split()
         i = 0
         while i < len(tokens):
@@ -338,16 +563,35 @@ class ChessEngine:
                 if tok == "depth" and i + 1 < len(tokens):
                     info["depth"] = int(tokens[i + 1])
                     i += 2
+                elif tok == "seldepth" and i + 1 < len(tokens):
+                    info["seldepth"] = int(tokens[i + 1])
+                    i += 2
                 elif tok == "multipv" and i + 1 < len(tokens):
                     info["multipv"] = int(tokens[i + 1])
                     i += 2
+                elif tok == "nodes" and i + 1 < len(tokens):
+                    info["nodes"] = int(tokens[i + 1])
+                    i += 2
+                elif tok == "nps" and i + 1 < len(tokens):
+                    info["nps"] = int(tokens[i + 1])
+                    i += 2
+                elif tok == "hashfull" and i + 1 < len(tokens):
+                    info["hashfull"] = int(tokens[i + 1])
+                    i += 2
+                elif tok == "time" and i + 1 < len(tokens):
+                    info["time_ms"] = int(tokens[i + 1])
+                    i += 2
                 elif tok == "score" and i + 2 < len(tokens):
-                    kind, value = tokens[i + 1], int(tokens[i + 2])
+                    kind, value = tokens[i + 1], tokens[i + 2]
                     if kind == "cp":
-                        info["score"] = value
+                        info["score"] = int(value)
                     elif kind == "mate":
-                        info["mate"] = value
+                        info["mate"] = int(value)
                     i += 3
+                elif tok in ("lowerbound", "upperbound"):
+                    # 带上下界的分数不是一个确切值, 判定结论时要排除
+                    info["bound"] = tok[:-5]
+                    i += 1
                 elif tok == "pv":
                     info["pv"] = tokens[i + 1:]
                     break

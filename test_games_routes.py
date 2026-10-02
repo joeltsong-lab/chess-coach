@@ -9,6 +9,7 @@
 """
 
 import os
+import shutil
 import tempfile
 import unittest
 
@@ -16,6 +17,16 @@ import unittest
 _TMP_DIR = tempfile.mkdtemp(prefix="xq_games_test_")
 os.environ["XQ_DB_PATH"] = os.path.join(_TMP_DIR, "test.db")
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
+
+
+def tearDownModule():
+    """跑完把这个模块设的环境变量收回去
+
+    storage._db_path() 是"每次连接都读环境变量"的, 留着它会把后面所有
+    只改 storage.DB_PATH 的测试模块指到已经删掉的临时库上。
+    """
+    os.environ.pop("XQ_DB_PATH", None)
+    shutil.rmtree(_TMP_DIR, ignore_errors=True)
 
 from app import app                                    # noqa: E402
 from chess_engine import START_FEN                     # noqa: E402
