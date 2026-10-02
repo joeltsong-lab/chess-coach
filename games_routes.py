@@ -25,11 +25,10 @@ from urllib.parse import quote
 
 from flask import Blueprint, Response, jsonify, request
 
-import pgn_io
-import storage
-from chess_engine import START_FEN
-from coord_utils import FILES, iccs_to_chinese
-from rules import RuleError, apply_iccs, board_to_fen, fen_to_board, validate_fen
+from core import pgn_io, storage
+from core.chess_engine import START_FEN
+from core.coord_utils import FILES, iccs_to_chinese
+from core.rules import RuleError, apply_iccs, board_to_fen, fen_to_board, validate_fen
 
 bp = Blueprint("games", __name__)
 

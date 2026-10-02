@@ -7,8 +7,8 @@
 
 import unittest
 
-from chess_engine import START_FEN
-from coord_utils import (
+from core.chess_engine import START_FEN
+from core.coord_utils import (
     FILES,
     fen_to_grid,
     grid_to_iccs,

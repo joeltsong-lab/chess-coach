@@ -12,10 +12,13 @@ import subprocess
 import threading
 import time
 
+from . import PROJECT_ROOT
+
 # ============================================================
 # 引擎路径配置 (按需修改, 也可用环境变量覆盖)
 # ============================================================
-PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
+# 默认位置 <项目根>/engine/ (项目根 = core/ 的上一级), 而不是 core/engine/
+PROJECT_DIR = str(PROJECT_ROOT)
 ENGINE_DIR = os.path.join(PROJECT_DIR, "engine")
 
 # 引擎可执行文件: 默认 engine/pikafish (Windows 下为 engine/pikafish.exe)

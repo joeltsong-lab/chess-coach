@@ -18,7 +18,7 @@ os.environ["XQ_DB_PATH"] = os.path.join(_TMP_DIR, "test.db")
 os.environ["PYTHONDONTWRITEBYTECODE"] = "1"
 
 from app import app                                    # noqa: E402
-from chess_engine import START_FEN                     # noqa: E402
+from core.chess_engine import START_FEN                # noqa: E402
 
 OPENING = ["h2e2", "h9g7", "h0g2", "i9h9"]
 OPENING_CN = ["炮二平五", "马8进7", "马二进三", "车9平8"]
@@ -263,7 +263,7 @@ class GamesApiTest(unittest.TestCase):
         self.assertEqual(self.client.delete(f"/api/games/{game_id}").status_code, 200)
         self.assertEqual(self.client.get(f"/api/games/{game_id}").status_code, 404)
         # 级联: 着法也没了
-        from storage import list_moves
+        from core.storage import list_moves
         self.assertEqual(list_moves(game_id), [])
 
 

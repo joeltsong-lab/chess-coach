@@ -12,8 +12,8 @@
 import time
 import unittest
 
-import rules
-from chess_engine import START_FEN
+from core import rules
+from core.chess_engine import START_FEN
 
 # 一个"红马被黑车牵制"的局面: 黑车在 e 列, 红马挡在中间, 马一动红帅就被照面攻击
 PIN_FEN = "3kr4/9/9/9/9/9/9/4N4/9/4K4 w - - 0 1"

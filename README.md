@@ -11,6 +11,13 @@
 
 ```
 xiangqi_ai/
+├── core/                  # 与平台无关的公共层：只依赖标准库，不 import Flask（Web / CLI / 手机端共用）
+│   ├── chess_engine.py    # ChessEngine 类：Pikafish 引擎的 UCI 封装
+│   ├── coord_utils.py     # 坐标与记谱工具：ICCS ↔ 棋盘行列、ICCS → 中文着法
+│   ├── rules.py           # 纯 Python 棋规：FEN 校验、合法着法生成、自将/照面检测、落子
+│   ├── pgn_io.py          # 棋谱导入导出：fen / fenmoves / iccs / pgn / json + 中文着法反查
+│   ├── storage.py         # 棋局存储层：sqlite3 建表 + 增删改查 + 事务（无 ORM）
+│   └── explainer.py       # LLM 二次筛选：从引擎候选里挑一条并给理由（未配置/失败则降级为引擎首选）
 ├── engine/                # 引擎目录（可执行文件 + NNUE 权重放这里）
 │   └── README.txt         # 引擎下载说明
 ├── data/
@@ -18,12 +25,6 @@ xiangqi_ai/
 ├── templates/
 │   ├── index.html         # 单页前端：CSS grid 棋盘 + 原生 JS，无框架
 │   └── studies.html       # 我的棋局：列表 / 复盘 / 评语 / 导入导出
-├── chess_engine.py        # ChessEngine 类：Pikafish 引擎的 UCI 封装
-├── coord_utils.py         # 坐标与记谱工具：ICCS ↔ 棋盘行列、ICCS → 中文着法
-├── explainer.py           # LLM 二次筛选：从引擎候选里挑一条并给理由（未配置/失败则降级为引擎首选）
-├── rules.py               # 纯 Python 棋规：FEN 校验、合法着法生成、自将/照面检测、落子
-├── storage.py             # 棋局存储层：sqlite3 建表 + 增删改查 + 事务（无 ORM）
-├── pgn_io.py              # 棋谱导入导出：fen / fenmoves / iccs / pgn / json + 中文着法反查
 ├── games_routes.py        # 棋局接口蓝图：保存 / 续下 / 列表 / 复盘 / 评语 / 导出 / 导入
 ├── test_coord_utils.py    # coord_utils 的单元测试（python test_coord_utils.py）
 ├── test_rules.py          # 棋规的单元测试（含 perft(3) 校验）
@@ -167,7 +168,7 @@ python app.py
   注意**导入不需要先保存**（它会自己建一局），但**导出的是库里已保存的那一局**，
   没保存过要先点「💾 保存」。
 
-前端零依赖、不用任何框架；后端只做转发，ICCS→中文着法的翻译统一由 `coord_utils.py` 提供。
+前端零依赖、不用任何框架；后端只做转发，ICCS→中文着法的翻译统一由 `core/coord_utils.py` 提供。
 
 ### 棋盘行列与 ICCS 的映射（校准点）
 
@@ -178,14 +179,14 @@ python app.py
 | ICCS   | `a`~`i` 表示第 1~9 路（`a` 在最左），数字 `0`~`9` 表示横线，`0` 是**红方底线**、`9` 是**黑方底线** |
 | 棋盘行列 | `grid[行][列]`，行 `0` 在**顶部**（黑方底线），行 `9` 在**底部**（红方底线），列 `0` = `a` 列 |
 
-换算只有一份实现，就在 `coord_utils.py`：`iccs_to_grid()` / `grid_to_iccs()`，
+换算只有一份实现，就在 `core/coord_utils.py`：`iccs_to_grid()` / `grid_to_iccs()`，
 朝向由 `GRID_ORIENTATION` 一个开关决定：
 
 - `'red_bottom'`（默认，行 0 在顶部 = 黑方底线）：`行 = 9 - 横线数字`
 - `'black_bottom'`（行 0 在顶部 = 红方底线）：`行 = 横线数字`
 
 `/api/analyze` 和 `/api/ai_hint` 都会把算好的 `from` / `to`（棋盘行列）直接发给前端，
-前端不再自己解析 ICCS。所以**要校准朝向只改 `coord_utils.py` 这一处**，刷新页面即生效
+前端不再自己解析 ICCS。所以**要校准朝向只改 `core/coord_utils.py` 这一处**，刷新页面即生效
 （前端只剩「换边」那层显示用的 180° 旋转）。
 改完可以跑 `python test_coord_utils.py` 验证（含 `h2e2` → 红炮所在格、与前端列号一致性等 17 个用例）。
 
@@ -291,12 +292,12 @@ python app.py
 - 取值会被夹到合法区间（线程 1~64、Hash 1~4096 MB、MultiPV 1~8、思考时间 100~60000 毫秒），
   非整数返回 400 `{"ok": false, "error": "..."}`。
 - 改引擎参数失败（例如引擎启动不了）时不会记住这次改动，返回 `ok: false` 并带上当前仍然生效的配置。
-- 启动时的默认值来自 `chess_engine.py` 里的 `ENGINE_THREADS` / `ENGINE_HASH_MB` / `ENGINE_MULTIPV`，
+- 启动时的默认值来自 `core/chess_engine.py` 里的 `ENGINE_THREADS` / `ENGINE_HASH_MB` / `ENGINE_MULTIPV`，
   也可以用环境变量 `PIKAFISH_THREADS` / `PIKAFISH_HASH` / `PIKAFISH_MULTIPV` 覆盖。
 
 ### AI 二次筛选（可选）
 
-`explainer.py` 里的 `pick_best_move(fen, candidates)` 把引擎已经算好的几条候选交给 LLM，
+`core/explainer.py` 里的 `pick_best_move(fen, candidates)` 把引擎已经算好的几条候选交给 LLM，
 让它**只能从中挑一条**并给理由（只做“挑选/翻译”不做“计算”，提示词里明确禁止自行推演走法、
 禁止编造候选之外的着法）。配置走环境变量：
 
@@ -343,7 +344,7 @@ rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1
 - 纵线用字母 `a`~`i` 表示，`a` 是红方视角的最左边；横线用数字 `0`~`9` 表示，`0` 是红方底线
 - 例如 `h2e2` = 红炮从 h 列 2 行走到 e 列 2 行 = **炮二平五**
 
-`coord_utils.py` 里的 `move_to_chinese()` 会把 ICCS 转成中文着法（`demo.py`、`app.py` 都复用它）：
+`core/coord_utils.py` 里的 `move_to_chinese()` 会把 ICCS 转成中文着法（`demo.py`、`app.py` 都复用它）：
 
 - 红方用汉字数字（一~九），黑方用阿拉伯数字（1~9）
 - 同一纵线上有两枚同种棋子时，用「前/后」区分，如 `前车进一`
@@ -355,7 +356,7 @@ rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1
 ## 五、API 用法
 
 ```python
-from chess_engine import ChessEngine
+from core.chess_engine import ChessEngine
 
 engine = ChessEngine()                      # 默认读 engine/ 下的引擎
 engine.configure_engine()                   # 可选: 发 Threads=4 / Hash=256MB / MultiPV=3
@@ -428,7 +429,7 @@ Flask 不是 debug 模式时不会自动重载模板，重启 `python app.py` �
 
 **Q: 箭头位置上下颠倒 / 画在错误的格子上**
 只有一种可能：前后端的棋盘朝向不一致。校准点见「棋盘行号与 ICCS 的映射」一节 ——
-改 `coord_utils.py` 里的 `GRID_ORIENTATION` 即可，前端会自动跟随。
+改 `core/coord_utils.py` 里的 `GRID_ORIENTATION` 即可，前端会自动跟随。
 
 **Q: 保存的棋局存在哪里？怎么备份 / 迁移？**
 本机 `data/chess.db`（一个 SQLite 文件）。备份有两招：在「我的棋局」里导出 `json`，
@@ -449,8 +450,8 @@ Flask 不是 debug 模式时不会自动重载模板，重启 `python app.py` �
 
 | 文件 | 职责 |
 | ---- | ---- |
-| `storage.py` | 建表 + 增删改查 + 事务（`sqlite3`，返回普通 dict） |
-| `pgn_io.py` | 棋谱导入导出：`fen / fenmoves / iccs / pgn / json`，含中文着法 ↔ ICCS 反查 |
+| `core/storage.py` | 建表 + 增删改查 + 事务（`sqlite3`，返回普通 dict） |
+| `core/pgn_io.py` | 棋谱导入导出：`fen / fenmoves / iccs / pgn / json`，含中文着法 ↔ ICCS 反查 |
 | `games_routes.py` | 9 个 HTTP 接口的 Blueprint，由 `app.py` 通过 `init_app()` 注入引擎 |
 | `templates/studies.html` | 「我的棋局」页：列表 / 复盘 / 评语 / 导入导出 |
 | `test_storage.py` / `test_pgn_io.py` / `test_games_routes.py` | 三层的单元测试（各 30 / 34 / 10 个用例） |
@@ -466,7 +467,7 @@ Flask 不是 debug 模式时不会自动重载模板，重启 `python app.py` �
 
 ### 建表 SQL
 
-就是 `storage.py` 里的 `SCHEMA`，首次运行自动执行（都是 `CREATE ... IF NOT EXISTS`，反复启动无副作用）：
+就是 `core/storage.py` 里的 `SCHEMA`，首次运行自动执行（都是 `CREATE ... IF NOT EXISTS`，反复启动无副作用）：
 
 ```sql
 CREATE TABLE IF NOT EXISTS games (
@@ -802,7 +803,9 @@ curl -X POST http://127.0.0.1:5000/api/games/import -H "Content-Type: applicatio
 
 ```
 <repo>/
-  app.py chess_engine.py storage.py rules.py pgn_io.py games_routes.py coord_utils.py explainer.py
+  core/                 与平台无关的公共层（不依赖 Flask）:
+                        chess_engine / coord_utils / rules / pgn_io / storage / explainer
+  app.py games_routes.py  Web 层: Flask 入口与棋局接口蓝图
   templates/            index.html / studies.html（公共）、study.html（残局）
   endgame/              残局研究模块：仅 feature/endgame 存在
   migrations/           表结构迁移 SQL（残局研究相关表）
@@ -870,13 +873,17 @@ scripts/run.sh stop
 首次导入（stable + endgame 合仓）由 `scripts/init_repo.sh` 完成，它分 8 个阶段执行，任一步失败即中止。
 导入结果、分支与 commit、文件差异统计、暂存目录处理情况写在 `scripts/init_report.txt`（本地产物，不入库）。
 
-### 后续演进（尚未实现）
+### 后续演进
 
 合并残局分支之前先把公共代码抽出来，避免两条线长期分叉：
 
-1. `core/`：与平台无关的公共层（`chess_engine`、`explainer`、`rules`、`pgn_io`、`storage` 的纯逻辑部分）；
+1. ✅ `core/`：与平台无关的公共层（`chess_engine`、`coord_utils`、`explainer`、`rules`、`pgn_io`、
+   `storage`），**只依赖标准库、不 import Flask**，Web / CLI / 手机端共用同一份实现
+   （`from core.chess_engine import ChessEngine`）；
 2. `web/routes/`：Web 路由（`games_routes`、`endgame.routes`）与模板；
 3. `mobile/`：手机端，先定公共引擎接口（局面表示、搜索参数、结果结构），再分别实现安卓与 iOS，
    C++ 引擎优先考虑复用（Android NDK / iOS 静态库或 WASM）。
 
-抽层完成前，`main` 与 `feature/endgame` 的公共文件保持同源改动，合并时人工核对。
+`core/` 的路径约定：引擎目录与数据库的默认位置都以「`core/` 的上一级」为项目根
+（`core/__init__.py` 里的 `PROJECT_ROOT`），可用 `PIKAFISH_PATH` / `PIKAFISH_NNUE` /
+`XQ_DB_PATH` 覆盖；把 `core/` 单独搬进别的宿主工程（例如手机端）时不会指错路径。

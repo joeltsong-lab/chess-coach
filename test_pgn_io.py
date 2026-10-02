@@ -12,10 +12,10 @@
 
 import unittest
 
-from chess_engine import START_FEN
-from pgn_io import (chinese_to_iccs, detect_format, export_fenmoves, export_iccs,
-                    export_json, export_pgn, import_content, parse_pgn, replay)
-from rules import RuleError
+from core.chess_engine import START_FEN
+from core.pgn_io import (chinese_to_iccs, detect_format, export_fenmoves, export_iccs,
+                         export_json, export_pgn, import_content, parse_pgn, replay)
+from core.rules import RuleError
 
 # 四步真实开局: 炮二平五 马8进7 马二进三 车9平8
 OPENING = ["h2e2", "h9g7", "h0g2", "i9h9"]
@@ -39,11 +39,11 @@ class TestChineseLookup(unittest.TestCase):
 
     def test_all_opening_moves_roundtrip(self):
         """开局每一个合法着法, 转成中文再反查, 都必须回到自己"""
-        from rules import legal_moves
-        from rules import fen_to_board
+        from core.rules import legal_moves
+        from core.rules import fen_to_board
         grid, side = fen_to_board(START_FEN)
         for iccs in legal_moves(grid, side=side):
-            from coord_utils import iccs_to_chinese
+            from core.coord_utils import iccs_to_chinese
             chinese = iccs_to_chinese(iccs, START_FEN)
             self.assertEqual(chinese_to_iccs(chinese, START_FEN), iccs,
                              f"{iccs} -> {chinese} 反查不回来")

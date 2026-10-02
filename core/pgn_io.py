@@ -17,9 +17,9 @@
 import json
 import re
 
-from chess_engine import START_FEN
-from coord_utils import FILES, iccs_to_chinese, pv_to_chinese
-from rules import RuleError, apply_iccs, board_to_fen, fen_to_board, legal_moves
+from .chess_engine import START_FEN
+from .coord_utils import FILES, iccs_to_chinese, pv_to_chinese
+from .rules import RuleError, apply_iccs, board_to_fen, fen_to_board, legal_moves
 
 FORMATS = ("fen", "fenmoves", "iccs", "pgn", "json")
 
