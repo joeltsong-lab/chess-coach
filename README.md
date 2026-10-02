@@ -776,3 +776,107 @@ curl -X POST http://127.0.0.1:5000/api/games/import -H "Content-Type: applicatio
   走子方是 `w`/`b`），默认**不要求双方将帅都在**（残局摆设局面常常"缺将"，要严格查可以传
   `require_kings=True`），也不管将帅是否照面；真正的走子合法性仍然由
   `rules.legal_moves()` + 落子规则（不能自将、不能照面）把关，所以摆出来的局面一样能接着走、能复盘。
+
+---
+
+## 版本管理与分支模型
+
+本仓库把「稳定版 Web」与「残局研究版」放进同一条历史，用分支区分，长期以 `main` 作唯一稳定线。
+
+### 分支一览
+
+| 分支 | 用途 | 来源 | 本地端口 |
+| --- | --- | --- | --- |
+| `main` | **稳定版**：基础对局、AI 提示、保存与复盘。唯一长期稳定线 | — | 5000 |
+| `feature/endgame` | 残局研究：摆盘 / 候选 / 主变 / 备注、引擎深度分析、定式库、LLM 解说、研究导入导出 | 从 `main` 创建 | 5001 |
+| `feature/mobile` | 手机端（安卓 / iOS / WASM） | 从 `main` 创建 | 5002 |
+
+约定：
+
+- **只从 `main` 派生**，特性分支之间不互相合并；
+- 特性分支定期用 `scripts/branch_manager.sh sync <分支>` 把 `main` 的改动并进来；
+- 回灌 `main` 走人工确认（脚本里反向同步必须显式加 `--confirm`）；
+- 不在 `main` 上直接堆功能，`main` 只接受验证过的合并。
+
+### 目录结构
+
+```
+<repo>/
+  app.py chess_engine.py storage.py rules.py pgn_io.py games_routes.py coord_utils.py explainer.py
+  templates/            index.html / studies.html（公共）、study.html（残局）
+  endgame/              残局研究模块：仅 feature/endgame 存在
+  migrations/           表结构迁移 SQL（残局研究相关表）
+  tests                 test_*.py（公共）与 test_endgame_*.py（残局）
+  scripts/              分支管理 / 运行 / worktree / 初始化报告
+  engine/               本地引擎目录：Pikafish.exe 与 NNUE 不入库，见下
+  data/                 运行时数据库目录：*.db 不入库，见下
+```
+
+`main` 的**仓库根目录就是可直接启动的稳定版**；`feature/endgame` 在同样的根目录上叠加残局模块，所以
+`git diff main...feature/endgame` 展示的就是这个模块的完整增量（新增 + 修改），不含任何与残局无关的改动。
+
+### 引擎与 NNUE（不入库）
+
+`engine/Pikafish.exe`（约 6.6MB）与 `engine/pikafish.nnue`（约 48MB）**不进仓库**（见 `.gitignore` 末节），
+克隆后自行放到 `engine/` 下即可：
+
+- 引擎与权重下载：<https://github.com/official-pikafish/Pikafish/releases>
+- 放好后 `python app.py`；`engine/README.txt` 记录了当前使用的版本与放置方式。
+
+需要把引擎随仓库一起分发（例如给非开发同学用）时，删掉 `.gitignore` 里 `engine/Pikafish.exe`、
+`engine/*.nnue` 三行再提交即可——但仓库体积会各分支各涨约 55MB。
+
+### 数据库与迁移（不入库）
+
+- `data/*.db` 及其 `-journal/-wal/-shm` 是运行时文件，已忽略；
+- 残局版引入了新表，切换分支后按需执行：
+
+  ```bash
+  python migrate.py up      # 应用迁移（幂等）
+  python migrate.py down    # 回滚
+  ```
+
+- 不同分支的库各自独立，**不要**把一个分支的 `.db` 覆盖到另一个分支当“同步”；
+  需要搬数据请用残局研究的导出/导入（`xq-endgame-study v1`）或 `pgn_io` 的棋局导入导出。
+
+### 脚本
+
+| 脚本 | 作用 |
+| --- | --- |
+| `scripts/branch_manager.sh` | `list / switch / new / diff / status / sync / delete` |
+| `scripts/run.sh` | `stable / endgame / mobile / all / stop / status` 按端口启动与停止 |
+| `scripts/worktree_setup.sh` | `init / list / remove`，多分支并行工作区 |
+| `scripts/init_report.sh` | 生成 `scripts/init_report.txt`（分支 / commit / 差异统计 / 未跟踪 / 远程状态） |
+
+常用命令（Windows 上用 **Git Bash** 跑，不是 PowerShell）：
+
+```bash
+scripts/branch_manager.sh list
+scripts/branch_manager.sh switch feature/endgame    # 有未提交改动会提示 stash / 提交 / 中止
+scripts/branch_manager.sh diff main feature/endgame
+scripts/branch_manager.sh sync feature/endgame      # 只允许 main -> 特性分支
+scripts/branch_manager.sh new feature/xxx           # 从 main 派生新特性分支
+
+scripts/worktree_setup.sh init                      # ../chess-coach-endgame、../chess-coach-mobile
+scripts/run.sh all                                  # 5000/5001 一起后台起，PID 在 scripts/.pids/
+scripts/run.sh stop
+```
+
+一个工作区只能检出一个分支，所以「同时跑稳定版和残局版」要靠 worktree：`worktree_setup.sh init`
+之后 `run.sh all` 会自动去 `../chess-coach-endgame` 启动残局版。
+
+### 初始化与差异报告
+
+首次导入（stable + endgame 合仓）由 `scripts/init_repo.sh` 完成，它分 8 个阶段执行，任一步失败即中止。
+导入结果、分支与 commit、文件差异统计、暂存目录处理情况写在 `scripts/init_report.txt`（本地产物，不入库）。
+
+### 后续演进（尚未实现）
+
+合并残局分支之前先把公共代码抽出来，避免两条线长期分叉：
+
+1. `core/`：与平台无关的公共层（`chess_engine`、`explainer`、`rules`、`pgn_io`、`storage` 的纯逻辑部分）；
+2. `web/routes/`：Web 路由（`games_routes`、`endgame.routes`）与模板；
+3. `mobile/`：手机端，先定公共引擎接口（局面表示、搜索参数、结果结构），再分别实现安卓与 iOS，
+   C++ 引擎优先考虑复用（Android NDK / iOS 静态库或 WASM）。
+
+抽层完成前，`main` 与 `feature/endgame` 的公共文件保持同源改动，合并时人工核对。
