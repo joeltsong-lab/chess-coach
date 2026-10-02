@@ -114,15 +114,23 @@ EOF
   return 1
 }
 
-# 优先用仓库里的虚拟环境，其次 PYTHON，最后系统 python3/python
+# 优先用仓库里的虚拟环境，其次 PYTHON，最后系统 python（逐个实测 import flask）
 pick_python() {
-  local dir="$1"
-  if [ -x "$dir/.venv/bin/python" ]; then printf '%s' "$dir/.venv/bin/python"; return 0; fi
-  if [ -x "$dir/.venv/Scripts/python.exe" ]; then printf '%s' "$dir/.venv/Scripts/python.exe"; return 0; fi
-  if [ -n "${PYTHON:-}" ]; then printf '%s' "$PYTHON"; return 0; fi
-  if command -v python3 >/dev/null 2>&1; then command -v python3; return 0; fi
-  if command -v python  >/dev/null 2>&1; then command -v python;  return 0; fi
-  return 1
+  local dir="$1" cand
+  local candidates=()
+  if [ -x "$dir/.venv/bin/python" ]; then candidates+=("$dir/.venv/bin/python"); fi
+  if [ -x "$dir/.venv/Scripts/python.exe" ]; then candidates+=("$dir/.venv/Scripts/python.exe"); fi
+  if [ -n "${PYTHON:-}" ]; then candidates+=("$PYTHON"); fi
+  # 注意顺序：Windows 上 `python3` 常常是 Microsoft Store 的占位符（跑起来只是弹商店），
+  # 所以 `python` 排在它前面；下面再用「能不能 import flask」逐个实测。
+  if command -v python  >/dev/null 2>&1; then candidates+=("$(command -v python)");  fi
+  if command -v python3 >/dev/null 2>&1; then candidates+=("$(command -v python3)"); fi
+  if [ "${#candidates[@]}" -eq 0 ]; then return 1; fi
+  for cand in "${candidates[@]}"; do
+    if "$cand" -c 'import flask' >/dev/null 2>&1; then printf '%s' "$cand"; return 0; fi
+  done
+  printf '%s' "${candidates[0]}"
+  return 0
 }
 
 pid_of() { cat "$PID_DIR/$1.pid" 2>/dev/null || true; }
