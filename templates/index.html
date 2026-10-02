@@ -1,0 +1,1330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>中国象棋 AI 分析</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:#f5f2ec;color:#2b2b2b;
+       font-family:'Microsoft YaHei',-apple-system,'Segoe UI',sans-serif}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:#888;font-size:13px;margin:0 0 18px}
+  main{display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start}
+
+  /* ---------- 棋盘 ---------- */
+  /* 棋盘线画在格子中心，棋子也放在格子中心，于是棋子正好落在线的交叉点上 */
+  .board{
+    position:relative;
+    width:min(92vw,540px);
+    aspect-ratio:9/10;
+    background:#f3dcb2;
+    border:3px solid #8a6a3a;
+    border-radius:6px;
+    container-type:inline-size;
+    user-select:none;
+  }
+  .lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .lines line{stroke:#8a6a3a;stroke-width:2}
+  .grid{position:absolute;inset:0;display:grid;
+        grid-template-columns:repeat(9,1fr);
+        grid-template-rows:repeat(10,1fr)}
+  .cell{position:relative;display:flex;align-items:center;justify-content:center}
+  .piece{
+    width:82%;height:82%;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:5cqw;font-weight:700;line-height:1;
+    background:radial-gradient(circle at 35% 28%,#fffdf7,#eed9b4);
+    border:2px solid #b98b4e;box-shadow:0 1px 2px rgba(0,0,0,.28);
+    cursor:pointer;transition:box-shadow .1s;
+  }
+  .piece.red{color:#c0392b;border-color:#c0392b}
+  .piece.black{color:#1f2d3d;border-color:#1f2d3d}
+  .cell.sel::before,.cell.best-from::before,.cell.best-to::before{
+        content:'';position:absolute;inset:7%;border-radius:50%}
+  .cell.sel::before{background:rgba(41,128,185,.30)}
+  .cell.best-from::before{background:rgba(41,128,185,.22)}
+  .cell.best-to::before{background:rgba(39,174,96,.38)}
+  .cell.sel .piece{box-shadow:0 0 0 3px #2980b9}
+  .cell.best-from .piece,.cell.best-to .piece{box-shadow:0 0 0 3px #27ae60}
+  .hint{margin-top:8px;font-size:13px;color:#777;min-height:18px}
+  /* 棋盘下方工具栏：悔棋（改棋局）、换边（只改显示）、保存/我的棋局/导入导出 */
+  .board-tools{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:6px}
+  button.ghost,a.ghost{padding:6px 14px;font-size:13px;background:#efe7d9;color:#7a5a20;
+               border:1px solid #ddd0b8;border-radius:4px;text-decoration:none;display:inline-block}
+  button.ghost:hover,a.ghost:hover{background:#e7dcc8}
+  button.ghost:disabled{background:#f2ece1;color:#c0b6a6;border-color:#e6ded0;cursor:not-allowed}
+  .hidden{display:none !important}
+
+  /* ---------- 弹窗（保存 / 导入导出） ---------- */
+  dialog{border:1px solid #ddd0b8;border-radius:8px;padding:18px 20px;background:#fffdf7;
+         color:#2b2b2b;font-family:inherit;width:min(94vw,540px);max-height:88vh;overflow:auto}
+  dialog::backdrop{background:rgba(40,30,15,.35)}
+  dialog h2{margin:0 0 12px;font-size:16px}
+  dialog h2 .tag{font-size:12px;font-weight:400;color:#a08a63;margin-left:8px}
+  dialog .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  dialog .full{grid-column:1 / -1}
+  dialog label{font-size:12px;color:#666;margin:0 0 3px}
+  dialog input[type=text],dialog input[type=date],dialog select,dialog input[type=file]{
+        width:100%;padding:6px 8px;border:1px solid #d5cdbe;border-radius:4px;font-size:13px;
+        background:#fff;font-family:inherit}
+  dialog textarea{margin-top:2px}
+  dialog .sep{border:0;border-top:1px solid #ece4d6;margin:16px 0 12px}
+  .dlg-foot{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  /* AI 提示箭头层：盖在棋盘最上面，但不吃点击事件 */
+  .arrows{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+
+  /* ---------- 右侧面板 ---------- */
+  .panel{flex:1 1 320px;min-width:290px;max-width:460px}
+  label{display:block;font-size:13px;color:#555;margin:0 0 4px}
+  textarea{width:100%;font-family:Consolas,Monaco,monospace;font-size:12px;
+           line-height:1.5;padding:8px;border:1px solid #d5cdbe;border-radius:4px;
+           resize:vertical;background:#fff}
+  textarea.bad{border-color:#c0392b;background:#fdf3f2}
+  .row{display:flex;align-items:flex-end;gap:10px;margin-top:12px}
+  .row .grow{flex:1}
+  input[type=number]{width:100%;padding:7px 8px;border:1px solid #d5cdbe;
+           border-radius:4px;font-size:13px}
+  button{padding:9px 22px;border:0;border-radius:4px;background:#c0392b;color:#fff;
+         font-size:14px;cursor:pointer}
+  button:disabled{background:#c9b6b2;cursor:not-allowed}
+  .status{margin-top:12px;font-size:13px;color:#2d86c4;min-height:18px}
+  .status.err{color:#c0392b;white-space:pre-wrap}
+  .result{margin-top:10px;background:#fff;border:1px solid #e6ded0;border-radius:6px;
+          padding:12px 14px;font-size:14px}
+  .result:empty{display:none}
+  .res-row{display:flex;gap:8px;margin:4px 0;align-items:baseline}
+  .res-row .k{flex:0 0 76px;color:#888;font-size:13px}
+  .res-row .v{font-weight:600}
+  .pv-title{margin:12px 0 6px;color:#888;font-size:13px}
+  ol.pv{margin:0;padding-left:22px}
+  ol.pv li{font-size:13px;line-height:1.8}
+  code{background:#f4f1ea;padding:1px 5px;border-radius:3px;font-size:12px}
+  .muted{color:#aaa;font-size:13px}
+  .note{margin-top:14px;font-size:12px;color:#999;line-height:1.7}
+
+  /* ---------- AI 教练卡片 ---------- */
+  #aihint{background:#8a6a3a}
+  #aihint:disabled{background:#c9b9a4}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:#555;cursor:pointer}
+  .toggle input{width:auto}
+  .card{margin-top:12px;background:#fffdf6;border:1px solid #e6ded0;border-radius:6px;
+        padding:12px 14px}
+  .card:empty{display:none}
+  .card h2{margin:0 0 8px;font-size:13px;color:#a08a63;font-weight:600}
+  .aimove{font-size:27px;font-weight:700;color:#b8860b;letter-spacing:2px;line-height:1.15}
+  .aimove .iccs{font-size:13px;font-weight:400;color:#b3a58c;letter-spacing:0;
+                margin-left:8px;vertical-align:3px}
+  .aiscore{display:inline-block;margin-top:6px;font-size:14px;font-weight:600;
+           color:#666;font-family:Consolas,Monaco,monospace}
+  .aiscore.red{color:#c0392b}
+  .aiscore.black{color:#1f2d3d}
+  .aiscore.big{background:#fff2cf;border-radius:4px;padding:2px 8px}
+  .aiexp{margin-top:10px;font-size:13px;line-height:1.75;color:#444;white-space:pre-wrap}
+  .aitag{font-size:12px;color:#b3a58c;margin-left:6px;font-weight:400}
+  .alt{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+  .alt button{padding:5px 12px;font-size:13px;background:#f4f1ea;color:#7a5a20;
+              border:1px solid #e0d6c2;border-radius:14px}
+  .alt button.on{background:#f6e6bd;border-color:#d9b463;color:#8a6a3a}
+  .alt button .tag{font-size:11px;color:#b3a58c;margin-left:5px}
+  .alt button.on .tag{color:#8a6a3a}
+  .ainote{margin-top:6px;font-size:12px;color:#a08a63}
+
+  /* ---------- 思考时间 / 引擎参数 ---------- */
+  select{padding:7px 8px;border:1px solid #d5cdbe;border-radius:4px;
+         font-size:13px;background:#fff}
+  .mtline{display:flex;align-items:center;gap:8px}
+  input[type=number]:disabled{background:#f2efe9;color:#aaa}
+  .unit{font-size:12px;color:#999}
+  details.cfg{margin-top:14px;font-size:13px;color:#666}
+  details.cfg summary{cursor:pointer;color:#7a5a20}
+  .cfg-grid{display:flex;flex-wrap:wrap;gap:12px;margin:10px 0 8px}
+  .cfg-grid label{display:flex;align-items:center;gap:6px;margin:0}
+  .cfg-grid input{width:84px;padding:5px 6px}
+</style>
+</head>
+<body>
+<h1>中国象棋 AI 分析助手</h1>
+<p class="sub">点击棋子走子（走错了点「↩ 悔棋」退回一步），或直接编辑 FEN，然后点「分析」；
+再点「🤖 AI 提示下一步」，棋盘会用金色箭头标出引擎 MultiPV 候选里被挑中的那一步，
+右侧有中文着法、评分和挑选理由</p>
+
+<main>
+  <section>
+    <div id="board" class="board">
+      <svg id="lines" class="lines" viewBox="0 0 900 1000" preserveAspectRatio="none"
+           aria-hidden="true"></svg>
+      <div id="grid" class="grid"></div>
+      <svg id="arrows" class="arrows" viewBox="0 0 900 1000" preserveAspectRatio="none"
+           aria-hidden="true">
+        <defs>
+          <marker id="arrowHead" viewBox="0 0 10 10" refX="10" refY="5"
+                  markerWidth="3.4" markerHeight="3.4" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#e0a516"></path>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <div class="hint" id="hint"></div>
+    <div class="board-tools">
+      <button id="undo" class="ghost" disabled title="回退一步">↩ 悔棋</button>
+      <button id="flip" class="ghost"
+              title="把棋盘转 180°，只改变显示方向；棋子、FEN、引擎结果都不变">⇅ 换边</button>
+      <button id="saveBtn" class="ghost"
+              title="把当前对局（整局着法）或当前局面存进「我的棋局」">💾 保存</button>
+      <a id="studiesLink" class="ghost" href="/studies"
+         title="我的棋局：列表 / 复盘 / 加评语 / 导入导出">📂 我的棋局</a>
+      <button id="ioBtn" class="ghost" title="导出棋谱，或把 FEN / ICCS / PGN / JSON 导入到棋盘">⇅ 导出导入</button>
+      <span class="muted" id="viewTag"></span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <label for="fen">FEN</label>
+    <textarea id="fen" rows="3" spellcheck="false"></textarea>
+
+    <div class="row">
+      <div class="grow">
+        <label for="movetime">思考时间</label>
+        <div class="mtline">
+          <select id="movetimeMode" title="自动：按剩余子力数决定（子多 3 秒 / 中局 5 秒 / 残局 8 秒）">
+            <option value="auto">自动（按子力数）</option>
+            <option value="manual">手动</option>
+          </select>
+          <input id="movetime" type="number" min="100" max="60000" step="100" value="3000" disabled>
+          <span class="unit">毫秒</span>
+        </div>
+      </div>
+      <button id="analyze">分析</button>
+    </div>
+
+    <div class="row">
+      <button id="aihint" class="grow">🤖 AI 提示下一步</button>
+      <label class="toggle" for="autohint">
+        <input id="autohint" type="checkbox">自动提示
+      </label>
+    </div>
+
+    <div id="status" class="status"></div>
+    <div id="result" class="result"></div>
+    <div id="aiCard" class="card"></div>
+
+    <details class="cfg">
+      <summary>引擎参数（Threads / Hash / MultiPV）</summary>
+      <div class="cfg-grid">
+        <label>线程 <input id="cfgThreads" type="number" min="1" max="64"></label>
+        <label>Hash(MB) <input id="cfgHash" type="number" min="1" max="4096"></label>
+        <label>MultiPV <input id="cfgMultiPV" type="number" min="1" max="8"></label>
+        <label>默认思考 <input id="cfgMovetime" type="number" min="100" max="60000" step="100"></label>
+      </div>
+      <div class="mtline">
+        <button id="cfgApply" class="ghost">应用</button>
+        <span class="muted" id="cfgStatus"></span>
+      </div>
+    </details>
+
+    <p class="note">
+      走子只校验基本棋规（马腿、象眼、炮架、路径、九宫、过河、将帅照面与自将），
+      不校验复杂残局规则；如果局面确实不合法，引擎会直接报错并终止，页面会显示原因。
+    </p>
+  </section>
+</main>
+
+<!-- ============ 保存棋局 ============ -->
+<dialog id="saveDlg">
+  <h2>保存棋局<span class="tag" id="svTag"></span></h2>
+  <div class="grid2">
+    <div class="full">
+      <label for="svName">棋局名</label>
+      <input id="svName" type="text" placeholder="如 2026-09-17 中炮对屏风马">
+    </div>
+    <div>
+      <label for="svCat">分类</label>
+      <select id="svCat">
+        <option value="game">对局</option>
+        <option value="opening">开局</option>
+        <option value="endgame">残局</option>
+        <option value="study">研究</option>
+      </select>
+    </div>
+    <div>
+      <label for="svDate">日期</label>
+      <input id="svDate" type="date">
+    </div>
+    <div>
+      <label for="svRed">红方</label>
+      <input id="svRed" type="text" placeholder="可留空">
+    </div>
+    <div>
+      <label for="svBlack">黑方</label>
+      <input id="svBlack" type="text" placeholder="可留空">
+    </div>
+    <div>
+      <label for="svEvent">赛事</label>
+      <input id="svEvent" type="text" placeholder="可留空">
+    </div>
+    <div>
+      <label for="svTags">标签（逗号分隔）</label>
+      <input id="svTags" type="text" placeholder="中炮,残局">
+    </div>
+    <div class="full">
+      <label for="svNote">备注</label>
+      <textarea id="svNote" rows="2" placeholder="可留空"></textarea>
+    </div>
+  </div>
+  <div class="row">
+    <label class="toggle" title="引擎给每一步打分，最多 20 步，会慢一些">
+      <input id="svScore" type="checkbox">顺便记录引擎评分</label>
+    <label class="toggle" title="不写 moves 表，只存当前局面的快照（适合残局/摆设局面）">
+      <input id="svSnap" type="checkbox">只存当前局面（不存历史着法）</label>
+  </div>
+  <div class="status" id="svStatus"></div>
+  <div class="dlg-foot">
+    <button id="svCancel" class="ghost" type="button">取消</button>
+    <button id="svOk" type="button">保存</button>
+  </div>
+</dialog>
+
+<!-- ============ 导出 / 导入 ============ -->
+<dialog id="ioDlg">
+  <h2>导出棋谱</h2>
+  <div class="row" style="margin-top:0">
+    <select id="expFmt">
+      <option value="fenmoves">fenmoves（云库/引擎复盘）</option>
+      <option value="pgn">pgn</option>
+      <option value="iccs">iccs</option>
+      <option value="json">json（备份）</option>
+      <option value="fen">fen（当前局面）</option>
+    </select>
+    <button id="expGo" class="ghost" type="button">生成</button>
+    <a id="expDown" class="ghost" href="#" download>下载文件</a>
+  </div>
+  <textarea id="expText" rows="6" readonly placeholder="点「生成」后在这里显示棋谱"></textarea>
+  <div class="status" id="expStatus"></div>
+
+  <hr class="sep">
+
+  <h2>导入棋谱</h2>
+  <label for="impText2">贴进 FEN / fenmoves / ICCS / PGN / JSON（格式自动识别，也可以手动指定）</label>
+  <textarea id="impText2" rows="4" spellcheck="false"
+            placeholder="例：1. 炮二平五 马8进7 2. 马二进三 车9平8"></textarea>
+  <div class="row">
+    <select id="impFmt2">
+      <option value="">自动识别</option>
+      <option value="fen">fen（只存局面）</option>
+      <option value="fenmoves">fenmoves</option>
+      <option value="iccs">iccs</option>
+      <option value="pgn">pgn</option>
+      <option value="json">json（备份恢复）</option>
+    </select>
+    <input id="impFile2" type="file" accept=".txt,.pgn,.json,.iccs" style="flex:1">
+    <button id="impGo2" class="ghost" type="button">导入到棋盘</button>
+  </div>
+  <div class="status" id="impStatus2"></div>
+
+  <div class="dlg-foot">
+    <button id="ioClose" class="ghost" type="button">关闭</button>
+  </div>
+</dialog>
+
+<script>
+const START_FEN = {{ start_fen | tojson }};
+const ENGINE_CONFIG = {{ engine_config | tojson }};
+
+const NAMES = {K:'帅',A:'仕',B:'相',N:'马',R:'车',C:'炮',P:'兵',
+               k:'将',a:'士',b:'象',n:'马',r:'车',c:'炮',p:'卒'};
+const PIECES = new Set(Object.keys(NAMES));
+const SVG_NS = 'http://www.w3.org/2000/svg';
+/* ICCS 文件字母：h2e2 这种着法就是"起点列行 + 终点列行"，行号 = 9 - 棋盘行 */
+const FILES = 'abcdefghi';
+const rcToIccs = (r, c) => FILES[c] + (9 - r);
+
+/* 交叉点在 SVG viewBox(900x1000) 里的中心坐标，间距 100 */
+const px = i => 50 + i * 100;   // 第 i 列
+const py = j => 50 + j * 100;   // 第 j 行
+
+const gridEl = document.getElementById('grid');
+const fenEl = document.getElementById('fen');
+const movetimeEl = document.getElementById('movetime');
+const movetimeModeEl = document.getElementById('movetimeMode');
+const statusEl = document.getElementById('status');
+const resultEl = document.getElementById('result');
+const hintEl = document.getElementById('hint');
+const analyzeBtn = document.getElementById('analyze');
+const aiBtn = document.getElementById('aihint');
+const autoHintEl = document.getElementById('autohint');
+const aiCardEl = document.getElementById('aiCard');
+const arrowsEl = document.getElementById('arrows');
+const flipBtn = document.getElementById('flip');
+const undoBtn = document.getElementById('undo');
+const viewTagEl = document.getElementById('viewTag');
+const cfgInputs = {
+  threads: document.getElementById('cfgThreads'),
+  hash_mb: document.getElementById('cfgHash'),
+  multipv: document.getElementById('cfgMultiPV'),
+  movetime: document.getElementById('cfgMovetime'),
+};
+const cfgStatusEl = document.getElementById('cfgStatus');
+
+let grid = [];         // grid[行][列]，行 0 = 黑方底线，列 0 = a 列
+let side = 'w';        // 该谁走
+let selected = null;   // {r, c}
+let bestMove = null;   // [fr, fc, tr, tc]
+let history = [];      // 悔棋栈：每走一步前压一份 {grid, side}
+
+/* 保存棋局用：moveLog 与 history 同步增减，logBaseFen 是 moveLog[0] 之前的那个局面。
+   手动改 FEN 会把两者一起重置（局面不是"走"出来的，就没法回放）。 */
+let moveLog = [];        // 已走着的 ICCS 列表，如 ['h2e2', 'h9g7']
+let logBaseFen = null;   // 这串着法的起始局面
+let gameId = null;       // 当前绑定的棋局 id（保存过/打开过才有）
+let gameMeta = null;     // 打开棋局时后端返回的元信息
+
+/* 换边：只是把棋盘转 180° 显示（黑方跑到下方），grid / FEN / 引擎结果都不动。
+   viewRow / viewCol 就是「棋盘坐标 -> 显示坐标」的映射，恰好是自己的逆映射。
+   棋盘线条（横线、"楚河汉界"处断开的竖线、两端九宫斜线）在 180° 旋转下不变，
+   所以换边时不需要重画 drawBoardLines()。 */
+let flipped = false;
+const viewRow = r => (flipped ? 9 - r : r);
+const viewCol = c => (flipped ? 8 - c : c);
+
+let lastHint = null;   // 最近一次 /api/ai_hint 的完整返回
+let hintSeq = 0;       // 请求序号，防止旧响应覆盖新结果
+let hintBusy = false;  // 当前是否有 AI 提示请求在飞
+
+const isRed = p => p === p.toUpperCase();
+const inside = (r, c) => r >= 0 && r < 10 && c >= 0 && c < 9;
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+/* ---------------- 坐标 ----------------
+   基准映射（ICCS 的文件字母/横线数字 <-> 棋盘行列）只在后端 coord_utils.py 里维护一份，
+   两个接口都把算好的棋盘行列（from / to）发给前端，前端不再自己解析 ICCS。
+   前端只剩「棋盘坐标 -> 显示坐标」这一层：换边时的 180° 旋转 viewRow / viewCol。 */
+
+/* ---------------- FEN 解析 / 生成 ---------------- */
+
+function fenToGrid(fen) {
+  const parts = fen.trim().split(/\s+/);
+  const rows = parts[0].split('/');
+  if (rows.length !== 10) throw new Error('棋盘部分应为 10 行，实际 ' + rows.length + ' 行');
+  const g = [];
+  for (const row of rows) {
+    const cells = [];
+    for (const ch of row) {
+      if (/[0-9]/.test(ch)) {
+        for (let i = 0; i < Number(ch); i++) cells.push('');
+      } else if (PIECES.has(ch)) {
+        cells.push(ch);
+      } else {
+        throw new Error('无法识别的棋子字符: ' + ch);
+      }
+    }
+    if (cells.length !== 9) throw new Error('每行应为 9 列: ' + row);
+    g.push(cells);
+  }
+  const s = (parts[1] || 'w').toLowerCase().startsWith('b') ? 'b' : 'w';
+  return {grid: g, side: s};
+}
+
+function gridToFen() {
+  const rows = grid.map(row => {
+    let s = '', empty = 0;
+    for (const p of row) {
+      if (!p) { empty++; continue; }
+      if (empty) { s += empty; empty = 0; }
+      s += p;
+    }
+    return s + (empty ? empty : '');
+  });
+  return rows.join('/') + ' ' + side + ' - - 0 1';
+}
+
+/* ---------------- 基本棋规 ---------------- */
+
+function inPalace(r, c, red) {
+  if (c < 3 || c > 5) return false;
+  return red ? (r >= 7 && r <= 9) : (r >= 0 && r <= 2);
+}
+
+function pseudoMoves(g, r, c) {
+  const p = g[r][c];
+  if (!p) return [];
+  const red = isRed(p);
+  const t = p.toLowerCase();
+  const out = [];
+  const push = (rr, cc) => {
+    if (!inside(rr, cc)) return;
+    const q = g[rr][cc];
+    if (q && isRed(q) === red) return;   // 不能吃自己的子
+    out.push([rr, cc]);
+  };
+
+  if (t === 'r' || t === 'c') {
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      let rr = r + dr, cc = c + dc, screen = false;
+      while (inside(rr, cc)) {
+        const q = g[rr][cc];
+        if (!q) {
+          if (t === 'r' || !screen) out.push([rr, cc]);   // 炮被炮架挡住后不能再走空格
+        } else if (t === 'r') {
+          push(rr, cc);                                  // 车：吃掉挡路的第一个子后停住
+          break;
+        } else {
+          if (!screen) { screen = true; }                  // 遇到炮架
+          else { push(rr, cc); break; }                    // 炮架后的第一个子
+        }
+        rr += dr; cc += dc;
+      }
+    }
+  } else if (t === 'n') {
+    for (const [dr, dc] of [[-2,-1],[-2,1],[2,-1],[2,1],[-1,-2],[-1,2],[1,-2],[1,2]]) {
+      const lr = Math.abs(dr) === 2 ? r + dr / 2 : r;
+      const lc = Math.abs(dc) === 2 ? c + dc / 2 : c;
+      if (!inside(lr, lc) || g[lr][lc]) continue;          // 蹩马腿
+      push(r + dr, c + dc);
+    }
+  } else if (t === 'b') {
+    for (const [dr, dc] of [[-2,-2],[-2,2],[2,-2],[2,2]]) {
+      const rr = r + dr, cc = c + dc;
+      if (!inside(rr, cc)) continue;
+      if (red ? rr < 5 : rr > 4) continue;                 // 相不过河
+      if (g[r + dr / 2][c + dc / 2]) continue;             // 塞象眼
+      push(rr, cc);
+    }
+  } else if (t === 'a') {
+    for (const [dr, dc] of [[-1,-1],[-1,1],[1,-1],[1,1]]) {
+      if (!inPalace(r + dr, c + dc, red)) continue;
+      push(r + dr, c + dc);
+    }
+  } else if (t === 'k') {
+    for (const [dr, dc] of [[-1,0],[1,0],[0,-1],[0,1]]) {
+      if (!inPalace(r + dr, c + dc, red)) continue;
+      push(r + dr, c + dc);
+    }
+  } else if (t === 'p') {
+    const forward = red ? -1 : 1;
+    push(r + forward, c);
+    if (red ? r <= 4 : r >= 5) {                           // 过河后可横走
+      push(r, c - 1);
+      push(r, c + 1);
+    }
+  }
+  return out;
+}
+
+function findKing(g, red) {
+  const k = red ? 'K' : 'k';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 9; c++) if (g[r][c] === k) return [r, c];
+  }
+  return null;
+}
+
+function kingAttacked(g, red) {
+  const k = findKing(g, red);
+  if (!k) return false;                 // 缺将：不拦截，交给引擎报错
+  const [kr, kc] = k;
+  const enemyKing = red ? 'k' : 'K';
+
+  for (let r = kr - 1; r >= 0; r--) {   // 将帅照面
+    const p = g[r][kc];
+    if (p) { if (p === enemyKing) return true; break; }
+  }
+  for (let r = kr + 1; r < 10; r++) {
+    const p = g[r][kc];
+    if (p) { if (p === enemyKing) return true; break; }
+  }
+
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 9; c++) {
+      const p = g[r][c];
+      if (!p || isRed(p) === red) continue;               // 只看对方棋子
+      if (pseudoMoves(g, r, c).some(([rr, cc]) => rr === kr && cc === kc)) return true;
+    }
+  }
+  return false;
+}
+
+function isLegalMove(g, fr, fc, tr, tc) {
+  const p = g[fr][fc];
+  if (!p) return false;
+  if (!pseudoMoves(g, fr, fc).some(([r, c]) => r === tr && c === tc)) return false;
+  const target = g[tr][tc];
+  if (target && target.toUpperCase() === 'K') return false;   // 不允许吃将
+  const ng = g.map(row => row.slice());
+  ng[tr][tc] = p;
+  ng[fr][fc] = '';
+  return !kingAttacked(ng, isRed(p));   // 不能自将 / 走成照面
+}
+
+/* ---------------- 渲染 ---------------- */
+
+/* 画棋盘线: viewBox 900x1000, 每个交叉点间距 100, 交叉点落在格子中心 (50,150,...,950) */
+function drawBoardLines() {
+  const NS = SVG_NS;
+  const svg = document.getElementById('lines');
+  const X = px;   // 9 条竖线
+  const Y = py;   // 10 条横线
+  const add = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(NS, 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    svg.appendChild(l);
+  };
+
+  for (let j = 0; j < 10; j++) add(X(0), Y(j), X(8), Y(j));         // 横线贯穿全盘
+  for (let i = 0; i < 9; i++) {
+    if (i === 0 || i === 8) add(X(i), Y(0), X(i), Y(9));            // 两侧竖线贯穿
+    else {                                                          // 中间竖线在楚河汉界处断开
+      add(X(i), Y(0), X(i), Y(4));
+      add(X(i), Y(5), X(i), Y(9));
+    }
+  }
+  add(X(3), Y(9), X(5), Y(7)); add(X(5), Y(9), X(3), Y(7));         // 红方九宫斜线
+  add(X(3), Y(0), X(5), Y(2)); add(X(5), Y(0), X(3), Y(2));         // 黑方九宫斜线
+}
+
+function render() {
+  gridEl.innerHTML = '';
+  // 按「显示顺序」逐格摆放，每格反查出它在 grid 里的真实坐标（换边时两者互为 180° 映射）
+  for (let dr = 0; dr < 10; dr++) {
+    for (let dc = 0; dc < 9; dc++) {
+      const r = viewRow(dr), c = viewCol(dc);
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (selected && selected.r === r && selected.c === c) cell.classList.add('sel');
+      if (bestMove) {
+        if (bestMove[0] === r && bestMove[1] === c) cell.classList.add('best-from');
+        if (bestMove[2] === r && bestMove[3] === c) cell.classList.add('best-to');
+      }
+      const p = grid[r][c];
+      if (p) {
+        const d = document.createElement('div');
+        d.className = 'piece ' + (isRed(p) ? 'red' : 'black');
+        d.textContent = NAMES[p] || p;
+        cell.appendChild(d);
+      }
+      cell.addEventListener('click', () => onCellClick(r, c));
+      gridEl.appendChild(cell);
+    }
+  }
+  hintEl.textContent = '轮到' + (side === 'w' ? '红方' : '黑方') + '走棋'
+    + (selected ? '（已选中 ' + NAMES[grid[selected.r][selected.c]] + '）' : '');
+  updateGameTag();
+}
+
+/* 棋盘下方那行小字：当前显示视角 + 是否已经绑定了某一局（走了几步） */
+function updateGameTag() {
+  viewTagEl.textContent = '当前视角：' + (flipped ? '黑方在下方' : '红方在下方')
+    + (gameId ? '　·　已绑定棋局 #' + gameId + (gameMeta && gameMeta.name ? '「' + gameMeta.name + '」' : '')
+              + '　·　已走 ' + moveLog.length + ' 步'
+             : '');
+}
+
+/* ---------------- 棋盘箭头层 ---------------- */
+
+let lastArrow = null;   // 最后画的那个箭头，换边后要照原样重画
+
+function clearArrows() {
+  [...arrowsEl.querySelectorAll('line, rect')].forEach(n => n.remove());
+  lastArrow = null;
+}
+
+/* 换边后箭头也要跟着翻，所以用同一份数据重画一次 */
+function redrawArrow() {
+  const a = lastArrow;
+  clearArrows();
+  if (a) drawArrow(a.from, a.to, a.opts);
+}
+
+/* from / to 都是 [行, 列]（棋盘坐标，不是显示坐标）；起点画黄框，终点画绿框，中间一条金色箭头 */
+function drawArrow(from, to, opts = {}) {
+  lastArrow = {from, to, opts};
+  const x1 = px(viewCol(from[1])), y1 = py(viewRow(from[0]));
+  const x2 = px(viewCol(to[1])), y2 = py(viewRow(to[0]));
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  // 首尾各让出一截：起点让开棋子，终点停在棋子边缘（一步棋 100 单位也能看清方向）
+  const head = Math.min(52, len * 0.42);
+  const tail = Math.min(24, len * 0.18);
+  const color = opts.color || '#e0a516';
+
+  const box = (x, y, stroke) => {
+    const r = document.createElementNS(SVG_NS, 'rect');
+    r.setAttribute('x', x - 38); r.setAttribute('y', y - 38);
+    r.setAttribute('width', 76); r.setAttribute('height', 76);
+    r.setAttribute('rx', 10);
+    r.setAttribute('fill', 'none');
+    r.setAttribute('stroke', stroke);
+    r.setAttribute('stroke-width', 5);
+    arrowsEl.appendChild(r);
+  };
+  box(x1, y1, '#e8b923');   // 起点：黄框
+  box(x2, y2, '#27ae60');   // 终点：绿框
+
+  const line = document.createElementNS(SVG_NS, 'line');
+  line.setAttribute('x1', x1 + ux * tail); line.setAttribute('y1', y1 + uy * tail);
+  line.setAttribute('x2', x2 - ux * head); line.setAttribute('y2', y2 - uy * head);
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', 9);
+  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('marker-end', 'url(#arrowHead)');
+  if (opts.dashed) line.setAttribute('stroke-dasharray', '18 12');
+  arrowsEl.appendChild(line);
+}
+
+/* ---------------- 换边 ---------------- */
+
+flipBtn.addEventListener('click', () => {
+  flipped = !flipped;
+  render();        // 棋子和高亮按新视角重排（棋盘线条在 180° 旋转下不变，不用重画）
+  redrawArrow();   // 已有的箭头跟着翻
+});
+
+/* ---------------- 交互 ---------------- */
+
+function onCellClick(r, c) {
+  const p = grid[r][c];
+  const redToMove = side === 'w';
+
+  if (selected) {
+    if (selected.r === r && selected.c === c) { selected = null; render(); return; }
+    if (isLegalMove(grid, selected.r, selected.c, r, c)) {
+      applyMove(selected.r, selected.c, r, c);
+      return;
+    }
+    if (p && isRed(p) === redToMove) {   // 改选自己的另一枚子
+      selected = {r, c};
+      render();
+      return;
+    }
+    selected = null;
+    render();
+    hintEl.textContent = '这一步走不了';
+    return;
+  }
+
+  if (!p) { hintEl.textContent = '这里没有棋子'; return; }
+  if (isRed(p) !== redToMove) {
+    hintEl.textContent = '现在轮到' + (redToMove ? '红方' : '黑方') + '走棋';
+    return;
+  }
+  selected = {r, c};
+  render();
+}
+
+function applyMove(fr, fc, tr, tc) {
+  pushHistory();                          // 先存悔棋点，再改棋局
+  moveLog.push(rcToIccs(fr, fc) + rcToIccs(tr, tc));   // 顺手记下这一步的 ICCS，保存整局要用
+  grid[tr][tc] = grid[fr][fc];
+  grid[fr][fc] = '';
+  side = side === 'w' ? 'b' : 'w';
+  selected = null;
+  bestMove = null;
+  fenEl.value = gridToFen();
+  fenEl.classList.remove('bad');
+  statusEl.textContent = '';
+  resultEl.innerHTML = '';
+  clearHint();          // 局面变了，旧的箭头/教练卡片一律作废
+  render();
+  if (autoHintEl.checked) setTimeout(() => aiHint({silent: true}), 0);   // 不阻塞 UI
+}
+
+/* ---------------- 悔棋 ---------------- */
+
+/* 走子前压一份快照（深拷贝一格一行，别让后续落子改到历史里的数组） */
+function pushHistory() {
+  history.push({grid: grid.map(row => row.slice()), side});
+  updateUndoButton();
+}
+
+function updateUndoButton() {
+  undoBtn.disabled = history.length === 0;
+  undoBtn.title = history.length
+    ? '回退一步（还可以悔 ' + history.length + ' 步）'
+    : '已经是起始局面，没有可悔的棋了';
+}
+
+/* 手动改过 FEN 之后，历史里的局面和现在的棋局对不上了，直接作废 */
+function resetHistory() {
+  history = [];
+  moveLog = [];
+  logBaseFen = gridToFen();   // 现在这个局面就是新的"着法起点"
+  updateUndoButton();
+}
+
+/* 悔棋 = 弹出一份快照当作当前棋局，连该谁走也一起回退 */
+function undoMove() {
+  if (!history.length) return;
+  const prev = history.pop();
+  moveLog.pop();
+  grid = prev.grid;
+  side = prev.side;
+  selected = null;
+  bestMove = null;
+  fenEl.value = gridToFen();
+  fenEl.classList.remove('bad');
+  resultEl.innerHTML = '';
+  clearHint();          // 回到上一步，之前那一步的箭头/教练卡片就作废了
+  updateUndoButton();
+  render();
+  statusEl.className = 'status';
+  statusEl.textContent = '已悔棋' +
+    (history.length ? '，还可以再悔 ' + history.length + ' 步' : '，回到起始局面');
+  // 和走子一样：开了自动提示就把当前局面的提示补回来
+  if (autoHintEl.checked) setTimeout(() => aiHint({silent: true}), 0);
+}
+
+undoBtn.addEventListener('click', undoMove);
+
+/* 清掉箭头 + 教练卡片，并作废还在飞的 AI 提示请求 */
+function clearHint() {
+  hintSeq++;
+  hintBusy = false;
+  aiBtn.disabled = false;                 // 作废的请求不会再恢复按钮，这里自己恢复
+  aiBtn.textContent = '🤖 AI 提示下一步';
+  clearArrows();
+  lastHint = null;
+  aiCardEl.innerHTML = '';
+}
+
+fenEl.addEventListener('input', () => {
+  try {
+    const parsed = fenToGrid(fenEl.value);
+    grid = parsed.grid;
+    side = parsed.side;
+    selected = null;
+    bestMove = null;
+    fenEl.classList.remove('bad');
+    resetHistory();     // 手动改 FEN 不是"走棋"，之前的悔棋栈作废
+    unbindGame();       // 手动改出来的局面也不再是库里那一局，再保存会另存一局
+    clearHint();
+    render();
+  } catch (e) {
+    fenEl.classList.add('bad');   // FEN 还没写完，先不打断输入
+  }
+});
+
+/* ---------------- 分析 ---------------- */
+
+function showResult(d) {
+  // from / to 是后端按 coord_utils 算好的棋盘行列，前端直接拿来高亮
+  bestMove = (d.from && d.to) ? [d.from[0], d.from[1], d.to[0], d.to[1]] : null;
+  render();
+
+  let score;
+  if (d.mate !== null && d.mate !== undefined) {
+    score = '绝杀，' + (d.mate > 0 ? '走子方' : '对方') + ' ' + Math.abs(d.mate) + ' 步内将死';
+  } else if (d.score !== null && d.score !== undefined) {
+    score = (d.score > 0 ? '+' : '') + d.score + ' 厘兵（走子方视角）';
+  } else {
+    score = '未获取';
+  }
+
+  const best = d.bestmove
+    ? esc(d.bestmove) + (d.bestmove_cn ? '　[' + esc(d.bestmove_cn) + ']' : '')
+    : '（引擎未返回）';
+
+  const pv = d.pv || [];
+  const pvCn = d.pv_cn || [];
+  const pvHtml = pv.length
+    ? '<ol class="pv">' + pv.map((mv, i) =>
+        '<li><code>' + esc(mv) + '</code>' + (pvCn[i] ? ' ' + esc(pvCn[i]) : '') + '</li>').join('') + '</ol>'
+    : '<div class="muted">无</div>';
+
+  const row = (k, v) => '<div class="res-row"><span class="k">' + k + '</span><span class="v">' + v + '</span></div>';
+
+  resultEl.innerHTML =
+    row('最佳着法', best) +
+    row('评分', esc(score)) +
+    row('搜索深度', esc(d.depth ?? '-')) +
+    row('走子方', esc(d.side || '-')) +
+    '<div class="pv-title">候选变例 (PV)</div>' + pvHtml;
+}
+
+async function analyze() {
+  analyzeBtn.disabled = true;
+  analyzeBtn.textContent = '分析中…';
+  statusEl.className = 'status';
+  statusEl.textContent = '引擎思考中，请稍候…';
+  resultEl.innerHTML = '';
+
+  try {
+    const resp = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fen: fenEl.value, ...movetimePayload()}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || data.error) {
+      statusEl.className = 'status err';
+      statusEl.textContent = data.error || ('请求失败，HTTP ' + resp.status);
+      return;
+    }
+    statusEl.className = 'status';
+    statusEl.textContent = '分析完成（' + (data.movetime || 0) + ' 毫秒）';
+    showResult(data);
+  } catch (e) {
+    statusEl.className = 'status err';
+    statusEl.textContent = '请求失败: ' + e.message;
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.textContent = '分析';
+  }
+}
+
+analyzeBtn.addEventListener('click', analyze);
+
+/* ---------------- AI 提示下一步 ---------------- */
+
+/* 引擎给的是走子方视角的 cp 分，换算成红方视角才好显示"红优/黑优" */
+function redScore(mv) {
+  const cp = mv && mv.score;
+  if (cp === null || cp === undefined) return null;
+  return side === 'w' ? cp : -cp;
+}
+
+function scoreText(mv) {
+  if (mv && mv.mate !== null && mv.mate !== undefined) {
+    return (mv.mate > 0 ? '走子方' : '对方') + ' ' + Math.abs(mv.mate) + ' 步内将死';
+  }
+  const red = redScore(mv);
+  if (red === null) return '评分未获取';
+  if (red === 0) return '均势 0';
+  return (red > 0 ? '红优 +' : '黑优 +') + (Math.abs(red) / 100).toFixed(2);
+}
+
+function showAiHint(d) {
+  lastHint = d;
+  clearArrows();
+
+  const primary = d.primary || {};
+  const pick = d.llm_pick || primary;
+  const cands = d.candidates || [];
+  if (pick.from && pick.to) drawArrow(pick.from, pick.to);   // 起点黄框 -> 终点绿框 + 金色箭头
+
+  const red = redScore(pick);
+  const colorCls = red === null ? '' : (red > 0 ? 'red' : (red < 0 ? 'black' : ''));
+  const isBig = (pick.mate !== null && pick.mate !== undefined) ||
+                (red !== null && Math.abs(red) >= 200);   // 大优/大劣时高亮
+  const pv = ((pick.pv_chinese && pick.pv_chinese.length) ? pick.pv_chinese
+                                                          : (pick.pv_iccs || [])).slice(0, 6);
+  const tag = pick.llm_used ? 'LLM 二次筛选' : '引擎首选';
+  // 引擎首选被 LLM 换掉时，把引擎那一步也标出来，方便对照
+  const note = (!pick.engine_first && primary.iccs)
+    ? '<div class="ainote">引擎首选：' + esc(primary.chinese || primary.iccs) +
+      '（' + esc(scoreText(primary)) + '）</div>'
+    : '';
+
+  aiCardEl.innerHTML =
+    '<h2>AI 教练<span class="aitag">（' + esc(tag) + '）</span></h2>' +
+    '<div class="aimove">' + esc(pick.chinese || pick.iccs) +
+      '<span class="iccs">' + esc(pick.iccs) + '</span></div>' +
+    '<div class="aiscore ' + colorCls + (isBig ? ' big' : '') + '">' +
+      esc(scoreText(pick)) + '　深度 ' + esc(pick.depth ?? '-') + '</div>' +
+    note +
+    (pick.reason ? '<div class="aiexp">' + esc(pick.reason) + '</div>' : '') +
+    (pv.length ? '<div class="pv-title">后续变化（PV）</div><ol class="pv">' +
+      pv.map(t => '<li>' + esc(t) + '</li>').join('') + '</ol>' : '') +
+    (cands.length > 1 ? '<div class="pv-title">引擎候选（点击看箭头，不会落子）</div>' +
+      '<div class="alt">' + cands.map((c, i) => {
+        const on = c.iccs === pick.iccs;
+        // 没走 LLM 二次筛选时，被选中的那条其实就是引擎首选
+        const mark = on ? (pick.llm_used ? 'LLM 选中' : '引擎首选')
+                        : (c.iccs === primary.iccs ? '引擎首选' : '');
+        return '<button type="button" data-cand="' + i + '"' + (on ? ' class="on"' : '') + '>' +
+          esc(c.chinese || c.iccs) +
+          (mark ? '<span class="tag">' + esc(mark) + '</span>' : '') + '</button>';
+      }).join('') + '</div>' : '');
+}
+
+/* 点击候选着法：只在棋盘上临时画它的箭头，不落子 */
+aiCardEl.addEventListener('click', e => {
+  const btn = e.target.closest('button[data-cand]');
+  if (!btn || !lastHint) return;
+  const cand = (lastHint.candidates || [])[Number(btn.dataset.cand)];
+  if (!cand || !cand.from || !cand.to) return;
+  [...aiCardEl.querySelectorAll('button[data-cand]')].forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  clearArrows();
+  drawArrow(cand.from, cand.to, {color: '#7fb3d5', dashed: true});
+});
+
+async function aiHint({silent = false, force = false} = {}) {
+  if (hintBusy && !force) return;   // 自动提示不排队，避免连续打断引擎
+  const seq = ++hintSeq;
+  hintBusy = true;
+  aiBtn.disabled = true;
+  aiBtn.textContent = '思考中…';
+  if (!silent) {
+    statusEl.className = 'status';
+    statusEl.textContent = 'AI 正在分析下一步…';
+  }
+
+  // 引擎思考 + LLM 二次筛选之后留一点余量，超时就直接中断请求
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), requestTimeoutMs());
+  try {
+    const resp = await fetch('/api/ai_hint', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fen: fenEl.value, use_llm: true, ...movetimePayload()}),
+      signal: ctrl.signal,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (seq !== hintSeq) return;                    // 已被更新的一次提示取代
+    if (!data.ok) {
+      statusEl.className = 'status err';
+      statusEl.textContent = data.error || ('AI 提示失败，HTTP ' + resp.status);
+      return;
+    }
+    statusEl.className = 'status';
+    statusEl.textContent = 'AI 提示完成（' +
+      (data.movetime_mode === 'auto' ? '自动 ' : '') + (data.movetime || 0) + ' 毫秒，深度 ' +
+      ((data.llm_pick || {}).depth ?? '-') + '）';
+    showAiHint(data);
+  } catch (e) {
+    if (seq !== hintSeq) return;
+    statusEl.className = 'status err';
+    statusEl.textContent = (e && e.name === 'AbortError')
+      ? 'AI 提示超时，请缩短思考时间或稍后重试'
+      : ('请求失败: ' + (e && e.message ? e.message : e));
+  } finally {
+    clearTimeout(timer);
+    if (seq === hintSeq) {
+      hintBusy = false;
+      aiBtn.disabled = false;
+      aiBtn.textContent = '🤖 AI 提示下一步';
+    }
+  }
+}
+
+aiBtn.addEventListener('click', () => aiHint({force: true}));
+
+/* ---------------- 思考时间档位 ---------------- */
+
+/* 自动档不传 movetime，由后端按剩余子力数决定；手动档才带上具体的毫秒数 */
+function movetimePayload() {
+  if (movetimeModeEl.value === 'auto') return {};
+  return {movetime: Number(movetimeEl.value) || ENGINE_CONFIG.movetime};
+}
+
+/* 引擎思考时间之外，LLM 二次筛选还要一次网络往返，所以余量给宽一点 */
+function requestTimeoutMs() {
+  const base = movetimeModeEl.value === 'auto'
+    ? 10000 : (Number(movetimeEl.value) || ENGINE_CONFIG.movetime);
+  return base + 25000;
+}
+
+movetimeModeEl.addEventListener('change', () => {
+  movetimeEl.disabled = movetimeModeEl.value === 'auto';
+});
+
+/* ---------------- 引擎参数 ---------------- */
+
+function fillEngineConfig(cfg) {
+  for (const key in cfgInputs) {
+    if (cfg[key] !== undefined && cfg[key] !== null) cfgInputs[key].value = cfg[key];
+  }
+}
+
+async function applyEngineConfig() {
+  cfgStatusEl.textContent = '应用中…';
+  const body = {};
+  for (const key in cfgInputs) body[key] = Number(cfgInputs[key].value);
+  try {
+    const resp = await fetch('/api/engine_config', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!data.ok) {
+      cfgStatusEl.textContent = '设置失败：' + (data.error || ('HTTP ' + resp.status));
+      if (data.engine) fillEngineConfig(data.engine);   // 引擎没收下就退回旧值
+      return;
+    }
+    fillEngineConfig(data.engine);
+    cfgStatusEl.textContent = data.changed ? '已生效' : '参数没变';
+  } catch (e) {
+    cfgStatusEl.textContent = '设置失败：' + (e && e.message ? e.message : e);
+  }
+}
+
+document.getElementById('cfgApply').addEventListener('click', applyEngineConfig);
+
+/* ---------------- 保存棋局 / 续下 / 导出导入 ---------------- */
+
+const saveDlgEl = document.getElementById('saveDlg');
+const ioDlgEl = document.getElementById('ioDlg');
+const svFields = {
+  name: document.getElementById('svName'),
+  category: document.getElementById('svCat'),
+  date: document.getElementById('svDate'),
+  red: document.getElementById('svRed'),
+  black: document.getElementById('svBlack'),
+  event: document.getElementById('svEvent'),
+  tags: document.getElementById('svTags'),
+  note: document.getElementById('svNote'),
+};
+const svScoreEl = document.getElementById('svScore');
+const svSnapEl = document.getElementById('svSnap');
+const svOkBtn = document.getElementById('svOk');
+const svStatusEl = document.getElementById('svStatus');
+const svTagEl = document.getElementById('svTag');
+
+/* /api/games/* 的响应都是 {ok:true,...} 或 {ok:false,error}，这里统一成抛异常 */
+async function api(url, opts) {
+  const resp = await fetch(url, opts);
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* 非 JSON 的响应下面统一报错 */ }
+  if (!resp.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || ('请求失败 HTTP ' + resp.status));
+  }
+  return data;
+}
+
+const postJson = (url, body) => api(url, {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify(body),
+});
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0');
+}
+
+/* 手动改过 FEN 之后就不是库里那一局了：之后保存会另存一局，不动原来的 */
+function unbindGame() {
+  if (gameId === null) return;
+  gameId = null;
+  gameMeta = null;
+}
+
+/* ---------- 保存 ---------- */
+
+function openSaveDialog() {
+  const m = gameMeta || {};
+  // 库里那一局的分类未必在下拉框里（比如 imported），认不出就按有没有着法给个默认值
+  const known = m.category
+    && svFields.category.querySelector('option[value="' + m.category + '"]');
+  svTagEl.textContent = gameId ? ('存回 #' + gameId) : '新建一局';
+  svFields.name.value = m.name || (todayStr() + (moveLog.length ? ' 对局' : ' 局面'));
+  svFields.category.value = known ? m.category : (moveLog.length ? 'game' : 'study');
+  svFields.date.value = (m.date || '').slice(0, 10) || todayStr();
+  svFields.red.value = m.red_name || '';
+  svFields.black.value = m.black_name || '';
+  svFields.event.value = m.event || '';
+  svFields.tags.value = m.tags || '';
+  svFields.note.value = m.note || '';
+  svSnapEl.checked = false;
+  svStatusEl.className = 'status';
+  svStatusEl.textContent = moveLog.length
+    ? ('现在记着 ' + moveLog.length + ' 步着法，会连历史一起存下来（勾上「只存当前局面」就只存局面快照）')
+    : '还没有走过子，只有当前局面；勾上「只存当前局面」即可存成残局/研究局面';
+  saveDlgEl.showModal();
+}
+
+async function doSave() {
+  const body = {
+    name: svFields.name.value.trim() || (todayStr() + ' 对局'),
+    category: svFields.category.value,
+    date: svFields.date.value,
+    red: svFields.red.value.trim(),
+    black: svFields.black.value.trim(),
+    event: svFields.event.value.trim(),
+    tags: svFields.tags.value.trim(),
+    note: svFields.note.value.trim(),
+    start_fen: logBaseFen || START_FEN,
+    current_fen: fenEl.value,
+    score: svScoreEl.checked,
+  };
+  if (gameId) body.game_id = gameId;
+  if (!svSnapEl.checked) body.move_list = moveLog.slice();
+
+  svOkBtn.disabled = true;
+  svStatusEl.className = 'status';
+  svStatusEl.textContent = svScoreEl.checked
+    ? '保存中（顺便让引擎逐步打分，会慢一些）…' : '保存中…';
+  try {
+    const d = await postJson('/api/games/save', body);
+    gameId = d.game_id;
+    gameMeta = Object.assign({}, gameMeta || {}, {
+      id: gameId, name: body.name, category: body.category, date: body.date,
+      red_name: body.red, black_name: body.black, event: body.event,
+      tags: body.tags, note: body.note,
+    });
+    svTagEl.textContent = '存回 #' + gameId;
+    updateGameTag();
+    svStatusEl.className = 'status';
+    svStatusEl.textContent = '已保存到「我的棋局」#' + gameId + '（共 ' + d.move_count + ' 步）'
+      + (d.scored ? '，记录了 ' + d.scored + ' 步评分' : '')
+      + '；在「📂 我的棋局」里可以复盘、加评语、导出';
+  } catch (e) {
+    svStatusEl.className = 'status err';
+    svStatusEl.textContent = e.message;
+  } finally {
+    svOkBtn.disabled = false;
+  }
+}
+
+/* ---------- 打开某一局（续下） ---------- */
+
+async function loadGame(id) {
+  statusEl.className = 'status';
+  statusEl.textContent = '正在打开棋局 #' + id + '…';
+  try {
+    const d = await api('/api/games/' + id);
+    const base = fenToGrid(d.start_fen || START_FEN);
+    let g = base.grid, s = base.side;
+    history = [];
+    moveLog = [];
+    for (const mv of d.moves || []) {
+      history.push({grid: g.map(row => row.slice()), side: s});   // 每步之前压一份，悔棋就能一路退回去
+      moveLog.push(mv.iccs);
+      const next = fenToGrid(mv.fen_after);
+      g = next.grid;
+      s = next.side;
+    }
+    grid = g;
+    side = s;
+    selected = null;
+    bestMove = null;
+    flipped = false;
+    logBaseFen = d.start_fen || START_FEN;
+    gameId = d.id;
+    gameMeta = d;
+    fenEl.value = gridToFen();
+    fenEl.classList.remove('bad');
+    clearHint();
+    updateUndoButton();
+    render();
+    statusEl.className = 'status';
+    statusEl.textContent = '已打开「' + (d.name || ('#' + d.id)) + '」：共 ' + (d.moves || []).length
+      + ' 步，接着走子再点「💾 保存」就会存回这一局';
+  } catch (e) {
+    statusEl.className = 'status err';
+    statusEl.textContent = '打开棋局失败: ' + e.message;
+  }
+}
+
+/* ---------- 导出 / 导入 ---------- */
+
+function exportUrl() {
+  return '/api/games/' + gameId + '/export?fmt=' + document.getElementById('expFmt').value
+    + '&download=1';
+}
+
+function syncExportLink() {
+  document.getElementById('expDown').href = gameId ? exportUrl() : '#';
+}
+
+function openIoDialog() {
+  document.getElementById('expText').value = '';
+  document.getElementById('expStatus').className = 'status';
+  document.getElementById('expStatus').textContent = gameId
+    ? '' : '这一局还没保存过；先点「💾 保存」存下来，才能从库里导出棋谱。';
+  document.getElementById('impStatus2').className = 'status';
+  document.getElementById('impStatus2').textContent = '';
+  syncExportLink();
+  ioDlgEl.showModal();
+}
+
+async function doExport() {
+  const st = document.getElementById('expStatus');
+  if (!gameId) {
+    st.className = 'status err';
+    st.textContent = '先点「💾 保存」把这一局存下来，才能导出';
+    return;
+  }
+  const fmt = document.getElementById('expFmt').value;
+  syncExportLink();
+  st.className = 'status';
+  st.textContent = '生成中…';
+  try {
+    const resp = await fetch('/api/games/' + gameId + '/export?fmt=' + fmt);
+    const text = await resp.text();
+    if (!resp.ok) throw new Error(text || ('请求失败 HTTP ' + resp.status));
+    document.getElementById('expText').value = text;
+    st.textContent = '已生成 ' + fmt + '：可以点「下载文件」存到本地，也可以直接复制上面的文本';
+  } catch (e) {
+    st.className = 'status err';
+    st.textContent = e.message;
+  }
+}
+
+async function doImport() {
+  const st = document.getElementById('impStatus2');
+  const content = document.getElementById('impText2').value;
+  if (!content.trim()) {
+    st.className = 'status err';
+    st.textContent = '请先把棋谱贴进文本框（或选一个文件）';
+    return;
+  }
+  st.className = 'status';
+  st.textContent = '导入中…';
+  try {
+    const d = await postJson('/api/games/import', {
+      content: content.trim(),
+      fmt: document.getElementById('impFmt2').value || undefined,
+    });
+    document.getElementById('impText2').value = '';
+    st.className = 'status';
+    st.textContent = '导入成功：' + (d.name || ('#' + d.game_id)) + '（' + d.fmt + '，'
+      + d.move_count + ' 步）'
+      + (d.warnings && d.warnings.length ? '；有 ' + d.warnings.length + ' 处着法没能解析' : '');
+    ioDlgEl.close();
+    statusEl.className = 'status';
+    statusEl.textContent = '导入成功：' + (d.name || ('#' + d.game_id)) + '（' + d.fmt + '，'
+      + d.move_count + ' 步）' + (d.warnings && d.warnings.length
+        ? '；有 ' + d.warnings.length + ' 处着法没能解析（详见浏览器控制台）' : '');
+    if (d.warnings && d.warnings.length) console.warn(d.warnings.join('\n'));
+    loadGame(d.game_id);   // 直接把导入的棋局摆到棋盘上，接着就能走子/复盘
+  } catch (e) {
+    st.className = 'status err';
+    st.textContent = e.message;
+  }
+}
+
+document.getElementById('saveBtn').addEventListener('click', openSaveDialog);
+document.getElementById('svCancel').addEventListener('click', () => saveDlgEl.close());
+svOkBtn.addEventListener('click', doSave);
+document.getElementById('ioBtn').addEventListener('click', openIoDialog);
+document.getElementById('ioClose').addEventListener('click', () => ioDlgEl.close());
+document.getElementById('expGo').addEventListener('click', doExport);
+document.getElementById('expFmt').addEventListener('change', syncExportLink);
+document.getElementById('impGo2').addEventListener('click', doImport);
+document.getElementById('impFile2').addEventListener('change', async () => {
+  const f = document.getElementById('impFile2').files[0];
+  if (f) document.getElementById('impText2').value = await f.text();
+});
+
+/* ---------------- 初始化 ---------------- */
+
+(function init() {
+  drawBoardLines();
+  fenEl.value = START_FEN;
+  fillEngineConfig(ENGINE_CONFIG);
+  movetimeEl.value = ENGINE_CONFIG.movetime;   // 手动档的初始值 = 后端的兜底思考时间
+  movetimeEl.disabled = movetimeModeEl.value === 'auto';
+  try {
+    const parsed = fenToGrid(START_FEN);
+    grid = parsed.grid;
+    side = parsed.side;
+  } catch (e) {
+    statusEl.className = 'status err';
+    statusEl.textContent = '初始 FEN 解析失败: ' + e.message;
+  }
+  resetHistory();
+  render();
+})();
+
+/* 从「我的棋局」点"续下"过来时带 ?game=<id>：打开这一局，接着往下走 */
+const wantGameId = new URLSearchParams(location.search).get('game');
+if (wantGameId) loadGame(wantGameId);
+</script>
+</body>
+</html>

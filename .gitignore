@@ -1,0 +1,109 @@
+# =============================================================================
+# chess-coach .gitignore
+#
+# 原则:
+#   1) 只忽略「生成物 / 运行时数据 / 本地环境」，源码目录一律不忽略
+#      （当前仓库根、以及未来可能新增的 core/ 、web/ 、mobile/ 都必须能入库）；
+#   2) 引擎二进制与 NNUE 默认不入库（约 55MB），克隆后按 README 的
+#      「引擎与 NNUE」一节自行放到 engine/ 下；需要随仓库分发时删掉对应行即可；
+#   3) 数据库文件是运行时产物（每个分支/每台机器各自一份），不入库，
+#      表结构变更请走 migrations/ 下的 SQL。
+# =============================================================================
+
+# ---------- Python 缓存与虚拟环境 ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---------- 测试与类型检查缓存 ----------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# ---------- Flask 日志与会话 ----------
+instance/
+flask_session/
+logs/
+*.log
+
+# ---------- IDE 与编辑器 ----------
+.vscode/
+.idea/
+*.code-workspace
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
+*~
+\#*\#
+.\#*
+
+# ---------- 操作系统文件 ----------
+.DS_Store
+.AppleDouble
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# ---------- 数据库运行时文件 ----------
+data/*.db
+data/*.db-journal
+data/*.db-wal
+data/*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+
+# ---------- 引擎日志 ----------
+engine/*.log
+engine/logs/
+pikafish.log
+
+# ---------- 脚本运行产物（PID/日志/初始化报告都是本地产物，不入库）----------
+scripts/.pids/
+scripts/.logs/
+scripts/init_report.txt
+
+# ---------- 备份与临时文件 ----------
+*.bak
+*.orig
+*.rej
+*.old
+*.tmp
+*_backup/
+*.tar
+*.tar.gz
+*.zip
+*.7z
+
+# ---------- 引擎二进制与 NNUE（不入库；如需随仓库分发请删除本节）----------
+engine/Pikafish.exe
+engine/pikafish.exe
+engine/*.nnue
+
+# ---------- 明确不忽略（源码目录与文档必须入库，防止上面的规则误伤）----------
+!requirements.txt
+!mobile/
+!mobile/**
+!core/
+!core/**
+!web/
+!web/**

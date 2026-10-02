@@ -1,0 +1,3 @@
+# 引擎封装 (chess_engine.py) 和命令行演示 (demo.py)：无第三方依赖，纯标准库
+# Web 界面 (app.py) 需要 Flask
+Flask>=3.0

@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>我的棋局 · 保存与复盘</title>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;padding:20px;background:#f5f2ec;color:#2b2b2b;
+       font-family:'Microsoft YaHei',-apple-system,'Segoe UI',sans-serif}
+  h1{font-size:20px;margin:0 0 4px}
+  h1 a{font-size:13px;font-weight:400;margin-left:10px;color:#7a5a20}
+  .sub{color:#888;font-size:13px;margin:0 0 18px}
+  a{color:#7a5a20}
+  button{padding:9px 18px;border:0;border-radius:4px;background:#c0392b;color:#fff;
+         font-size:14px;cursor:pointer}
+  button:disabled{background:#c9b6b2;cursor:not-allowed}
+  button.ghost{padding:6px 12px;font-size:13px;background:#efe7d9;color:#7a5a20;
+               border:1px solid #ddd0b8}
+  button.ghost:hover{background:#e7dcc8}
+  button.tiny{padding:4px 9px;font-size:12px;background:#efe7d9;color:#7a5a20;
+              border:1px solid #ddd0b8}
+  input,select,textarea{padding:7px 8px;border:1px solid #d5cdbe;border-radius:4px;
+                         font-size:13px;background:#fff;font-family:inherit}
+  textarea{width:100%;font-family:Consolas,Monaco,monospace;font-size:12px;line-height:1.5;
+           resize:vertical}
+  label{display:block;font-size:13px;color:#555;margin:0 0 4px}
+  .hidden{display:none !important}
+  .muted{color:#999;font-size:12px}
+  .status{margin-top:10px;font-size:13px;color:#2d86c4;min-height:18px;white-space:pre-wrap}
+  .status.err{color:#c0392b}
+
+  /* ---------- 列表 ---------- */
+  .filters{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:14px}
+  .filters .f{display:flex;flex-direction:column}
+  .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:12px}
+  .gcard{background:#fff;border:1px solid #e6ded0;border-radius:6px;padding:12px 14px}
+  .gcard h3{margin:0 0 6px;font-size:15px;display:flex;align-items:center;gap:8px}
+  .cat{font-size:11px;font-weight:400;background:#f4f1ea;color:#7a5a20;
+       border:1px solid #e0d6c2;border-radius:10px;padding:1px 8px}
+  .gmeta{font-size:12px;color:#888;line-height:1.8}
+  .gmeta b{color:#555;font-weight:600}
+  .gtags{font-size:12px;color:#a08a63;margin-top:2px}
+  .gacts{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .fenline{font-family:Consolas,Monaco,monospace;font-size:11px;color:#aaa;
+           overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:4px}
+
+  /* ---------- 复盘 ---------- */
+  .review{display:flex;gap:20px;flex-wrap:wrap;align-items:flex-start}
+  .board{position:relative;width:min(92vw,460px);aspect-ratio:9/10;background:#f3dcb2;
+         border:3px solid #8a6a3a;border-radius:6px;container-type:inline-size;user-select:none}
+  .lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .lines line{stroke:#8a6a3a;stroke-width:2}
+  .grid{position:absolute;inset:0;display:grid;grid-template-columns:repeat(9,1fr);
+        grid-template-rows:repeat(10,1fr)}
+  .cell{position:relative;display:flex;align-items:center;justify-content:center}
+  .piece{width:82%;height:82%;border-radius:50%;display:flex;align-items:center;
+         justify-content:center;font-size:5cqw;font-weight:700;line-height:1;
+         background:radial-gradient(circle at 35% 28%,#fffdf7,#eed9b4);
+         border:2px solid #b98b4e;box-shadow:0 1px 2px rgba(0,0,0,.28)}
+  .piece.red{color:#c0392b;border-color:#c0392b}
+  .piece.black{color:#1f2d3d;border-color:#1f2d3d}
+  .cell.hl-from::before,.cell.hl-to::before{content:'';position:absolute;inset:7%;border-radius:50%}
+  .cell.hl-from::before{background:rgba(41,128,185,.28)}
+  .cell.hl-to::before{background:rgba(39,174,96,.35)}
+  .rpanel{flex:1 1 380px;min-width:320px}
+  .rnav{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:10px 0}
+  .moves{max-height:46vh;overflow:auto;border:1px solid #e6ded0;border-radius:6px;background:#fff}
+  .mv{display:flex;gap:8px;align-items:baseline;padding:5px 10px;font-size:13px;
+      border-bottom:1px solid #f4f1ea;cursor:pointer}
+  .mv:hover{background:#faf7f0}
+  .mv.on{background:#f6e6bd}
+  .mv .no{flex:0 0 34px;color:#aaa;font-size:12px}
+  .mv .cn{flex:0 0 auto;font-weight:600}
+  .mv .ic{flex:0 0 auto;color:#aaa;font-size:12px;font-family:Consolas,Monaco,monospace}
+  .mv .sc{flex:0 0 auto;color:#2d86c4;font-size:12px}
+  .mv .sc.neg{color:#c0392b}
+  .mv .cm{flex:1;color:#7a5a20;font-size:12px;overflow:hidden;text-overflow:ellipsis;
+          white-space:nowrap}
+  .mv .key{color:#d9a520}
+  .box{margin-top:14px;background:#fff;border:1px solid #e6ded0;border-radius:6px;padding:12px 14px}
+  .box h2{margin:0 0 8px;font-size:13px;color:#a08a63}
+  .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+  .toggle{display:flex;align-items:center;gap:6px;font-size:13px;color:#555;cursor:pointer}
+  .toggle input{width:auto}
+  .aiout{font-size:13px;line-height:1.8;color:#444;margin-top:8px;white-space:pre-wrap}
+  .aiout .big{font-size:16px;font-weight:700;color:#b8860b}
+</style>
+</head>
+<body>
+<h1>我的棋局<a href="/">← 回下棋页</a></h1>
+<p class="sub">列表里可以打开续下、逐步复盘、加评语、导出棋谱；下面还能把 FEN / ICCS / PGN / JSON 贴进来导入</p>
+
+<!-- ============ 列表 ============ -->
+<section id="listView">
+  <div class="filters">
+    <div class="f"><label for="fCat">分类</label>
+      <select id="fCat">
+        <option value="">全部</option>
+        <option value="game">对局</option>
+        <option value="opening">开局</option>
+        <option value="endgame">残局</option>
+        <option value="study">研究</option>
+        <option value="imported">导入</option>
+      </select></div>
+    <div class="f"><label for="fTag">标签</label><input id="fTag" placeholder="如 中炮"></div>
+    <div class="f"><label for="fKw">关键字</label><input id="fKw" placeholder="名称/备注/棋手…"></div>
+    <button id="fGo">筛选</button>
+    <button id="fReset" class="ghost">重置</button>
+  </div>
+  <div id="listStatus" class="status"></div>
+  <div id="cards" class="cards"></div>
+
+  <div class="box" style="margin-top:18px">
+    <h2>导入棋谱</h2>
+    <label for="impText">贴进 FEN / fenmoves / ICCS / PGN / JSON（格式能自动认，也可以手动指定）</label>
+    <textarea id="impText" rows="6" spellcheck="false"
+              placeholder='例：1. 炮二平五 马8进7 2. 马二进三 车9平8'></textarea>
+    <div class="row">
+      <select id="impFmt">
+        <option value="">自动识别</option>
+        <option value="fen">fen（只存局面）</option>
+        <option value="fenmoves">fenmoves</option>
+        <option value="iccs">iccs</option>
+        <option value="pgn">pgn</option>
+        <option value="json">json（备份恢复）</option>
+      </select>
+      <input id="impName" placeholder="棋局名（可留空）">
+      <input id="impFile" type="file" accept=".txt,.pgn,.json,.iccs" style="max-width:210px">
+      <button id="impGo">导入</button>
+    </div>
+    <div id="impStatus" class="status"></div>
+  </div>
+</section>
+
+<!-- ============ 复盘 ============ -->
+<section id="reviewView" class="hidden">
+  <div class="review">
+    <div>
+      <div class="board">
+        <svg id="rLines" class="lines" viewBox="0 0 900 1000" preserveAspectRatio="none"></svg>
+        <div id="rGrid" class="grid"></div>
+      </div>
+      <div class="muted" id="rPos" style="margin-top:6px"></div>
+    </div>
+
+    <div class="rpanel">
+      <div class="row" style="margin:0 0 6px">
+        <button id="rBack" class="ghost">← 回列表</button>
+        <span id="rName" style="font-weight:600"></span>
+      </div>
+      <div class="muted" id="rMeta"></div>
+
+      <div class="rnav">
+        <button id="rFirst" class="ghost">⏮ 开局</button>
+        <button id="rPrev" class="ghost">◀ 上一步</button>
+        <button id="rNext" class="ghost">下一步 ▶</button>
+        <button id="rLast" class="ghost">最后 ⏭</button>
+      </div>
+
+      <div class="moves" id="rMoves"></div>
+
+      <div class="box">
+        <h2 id="rMoveTitle">这一步</h2>
+        <label for="rComment">评语（教练批注 / 自己的心得）</label>
+        <textarea id="rComment" rows="3" placeholder="选中右边任意一步后写评语"></textarea>
+        <div class="row">
+          <label class="toggle"><input type="checkbox" id="rKey">标为关键步</label>
+          <button id="rSave">保存评语</button>
+          <button id="rAnalyze" class="ghost">🤖 AI 分析该步之前的局面</button>
+        </div>
+        <div class="aiout" id="rAi"></div>
+        <div class="row"><button id="rAiSave" class="ghost hidden">把评分记到这一步</button></div>
+      </div>
+
+      <div class="box">
+        <h2>导出</h2>
+        <div class="row">
+          <select id="rFmt">
+            <option value="fenmoves">fenmoves（云库/引擎复盘）</option>
+            <option value="pgn">pgn</option>
+            <option value="iccs">iccs</option>
+            <option value="json">json（备份）</option>
+            <option value="fen">fen（当前局面）</option>
+          </select>
+          <button id="rExport" class="ghost">生成</button>
+          <label class="toggle" title="只对 pgn 有效：棋步写「炮二平五」而不是 h2e2">
+            <input type="checkbox" id="rCn">中文着法</label>
+          <a id="rDownload" class="ghost" style="padding:6px 12px;border:1px solid #ddd0b8;
+             border-radius:4px;text-decoration:none" href="#" download>下载文件</a>
+        </div>
+        <textarea id="rText" rows="6" readonly></textarea>
+        <div class="status" id="rExportStatus"></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<script>
+const START_FEN = {{ start_fen | tojson }};
+const FILES = 'abcdefghi';
+const NAMES = {K:'帅',A:'仕',B:'相',N:'马',R:'车',C:'炮',P:'兵',
+               k:'将',a:'士',b:'象',n:'马',r:'车',c:'炮',p:'卒'};
+const PIECES = new Set(Object.keys(NAMES));
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const CAT_NAME = {game:'对局', opening:'开局', endgame:'残局', study:'研究', imported:'导入'};
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+async function api(url, opts) {
+  const resp = await fetch(url, opts);
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* 非 JSON 的响应下面统一报错 */ }
+  if (!resp.ok || !data || data.ok === false) {
+    throw new Error((data && data.error) || ('请求失败 HTTP ' + resp.status));
+  }
+  return data;
+}
+
+/* ---------------- FEN / 棋盘 ---------------- */
+function fenToGrid(fen) {
+  const parts = fen.trim().split(/\s+/);
+  const rows = parts[0].split('/');
+  if (rows.length !== 10) throw new Error('FEN 棋盘部分应为 10 行');
+  const g = [];
+  for (const row of rows) {
+    const cells = [];
+    for (const ch of row) {
+      if (/[0-9]/.test(ch)) { for (let i = 0; i < Number(ch); i++) cells.push(''); }
+      else if (PIECES.has(ch)) cells.push(ch);
+      else throw new Error('无法识别的棋子字符: ' + ch);
+    }
+    if (cells.length !== 9) throw new Error('FEN 每行应为 9 列');
+    g.push(cells);
+  }
+  return g;
+}
+
+function drawLines() {
+  const svg = $('rLines');
+  svg.innerHTML = '';
+  const px = i => 50 + i * 100, py = j => 50 + j * 100;
+  const add = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(SVG_NS, 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    svg.appendChild(l);
+  };
+  for (let j = 0; j < 10; j++) add(px(0), py(j), px(8), py(j));
+  for (let i = 0; i < 9; i++) {
+    if (i === 0 || i === 8) add(px(i), py(0), px(i), py(9));
+    else { add(px(i), py(0), px(i), py(4)); add(px(i), py(5), px(i), py(9)); }
+  }
+  add(px(3), py(9), px(5), py(7)); add(px(5), py(9), px(3), py(7));
+  add(px(3), py(0), px(5), py(2)); add(px(5), py(0), px(3), py(2));
+}
+
+/* from / to 是 ICCS 坐标（如 h2），转成棋盘行列后给对应的格子加上高亮 */
+function iccsToRC(sq) {
+  return [9 - Number(sq[1]), FILES.indexOf(sq[0])];
+}
+
+function renderBoard(fen, fromSq, toSq) {
+  let g;
+  try { g = fenToGrid(fen); } catch (e) { $('rPos').textContent = '局面解析失败: ' + e.message; return; }
+  const from = fromSq ? iccsToRC(fromSq) : null;
+  const to = toSq ? iccsToRC(toSq) : null;
+  const el = $('rGrid');
+  el.innerHTML = '';
+  for (let r = 0; r < 10; r++) {
+    for (let c = 0; c < 9; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (from && from[0] === r && from[1] === c) cell.classList.add('hl-from');
+      if (to && to[0] === r && to[1] === c) cell.classList.add('hl-to');
+      const p = g[r][c];
+      if (p) {
+        const d = document.createElement('div');
+        d.className = 'piece ' + (p === p.toUpperCase() ? 'red' : 'black');
+        d.textContent = NAMES[p] || p;
+        cell.appendChild(d);
+      }
+      el.appendChild(cell);
+    }
+  }
+}
+
+/* ---------------- 列表 ---------------- */
+async function loadList() {
+  const q = new URLSearchParams();
+  if ($('fCat').value) q.set('category', $('fCat').value);
+  if ($('fTag').value.trim()) q.set('tag', $('fTag').value.trim());
+  if ($('fKw').value.trim()) q.set('keyword', $('fKw').value.trim());
+  $('listStatus').className = 'status';
+  $('listStatus').textContent = '加载中…';
+  try {
+    const data = await api('/api/games/list?' + q.toString());
+    renderList(data.games);
+    $('listStatus').textContent = '共 ' + data.total + ' 局';
+  } catch (e) {
+    $('listStatus').className = 'status err';
+    $('listStatus').textContent = e.message;
+  }
+}
+
+function renderList(games) {
+  const box = $('cards');
+  box.innerHTML = '';
+  if (!games.length) {
+    box.innerHTML = '<div class="muted">还没有保存过棋局。在下棋页点「💾 保存」就能存下来。</div>';
+    return;
+  }
+  for (const g of games) {
+    const card = document.createElement('div');
+    card.className = 'gcard';
+    const name = g.name || ('#' + g.id);
+    card.innerHTML =
+      '<h3>' + esc(name) + '<span class="cat">' + esc(CAT_NAME[g.category] || g.category || '') + '</span></h3>' +
+      '<div class="gmeta">' +
+        '红 <b>' + esc(g.red_name || '?') + '</b> · 黑 <b>' + esc(g.black_name || '?') + '</b>' +
+        ' · 结果 <b>' + esc(g.result || '*') + '</b><br>' +
+        '共 <b>' + g.move_count + '</b> 步' +
+        (g.last_chinese ? ' · 最后一步 <b>' + esc(g.last_chinese) + '</b>' : '') +
+        ' · 轮到 ' + (g.side_to_move === 'black' ? '黑方' : '红方') + '<br>' +
+        '更新 <b>' + esc(g.updated_at || '') + '</b>' +
+        (g.event || g.date ? ' · ' + esc([g.event, g.date].filter(Boolean).join(' ')) : '') +
+      '</div>' +
+      (g.tags ? '<div class="gtags">#' + esc(g.tags.split(',').join(' #')) + '</div>' : '') +
+      (g.note ? '<div class="muted">' + esc(g.note) + '</div>' : '') +
+      '<div class="fenline" title="' + esc(g.current_fen || '') + '">' + esc(g.current_fen || '') + '</div>';
+
+    const acts = document.createElement('div');
+    acts.className = 'gacts';
+    const mk = (text, cls, fn) => {
+      const b = document.createElement('button');
+      b.className = cls; b.textContent = text; b.addEventListener('click', fn);
+      acts.appendChild(b);
+      return b;
+    };
+    mk('复盘', 'tiny', () => openReview(g.id));
+    mk('续下', 'tiny', () => { location.href = '/?game=' + g.id; });
+    mk('改名', 'tiny', () => renameGame(g));
+    mk('删除', 'tiny', () => deleteGame(g));
+    const a = document.createElement('a');
+    a.className = 'tiny'; a.textContent = '导出';
+    a.style.cssText = 'padding:4px 9px;border:1px solid #ddd0b8;border-radius:4px;' +
+                      'background:#efe7d9;text-decoration:none';
+    a.href = '/api/games/' + g.id + '/export?fmt=fenmoves&download=1';
+    acts.appendChild(a);
+    card.appendChild(acts);
+    box.appendChild(card);
+  }
+}
+
+/** 列表操作出错时把原因显示在列表状态行上（免得点了没反应） */
+async function tryList(fn) {
+  try {
+    await fn();
+  } catch (e) {
+    $('listStatus').className = 'status err';
+    $('listStatus').textContent = e.message;
+  }
+}
+
+function renameGame(g) {
+  const name = prompt('新的棋局名：', g.name || '');
+  if (name === null) return;
+  tryList(async () => {
+    await api('/api/games/' + g.id + '/update', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: name}),
+    });
+    loadList();
+  });
+}
+
+function deleteGame(g) {
+  if (!confirm('删除「' + (g.name || g.id) + '」？这局的所有着法和评语都会一起删掉。')) return;
+  tryList(async () => {
+    await api('/api/games/' + g.id, {method: 'DELETE'});
+    loadList();
+  });
+}
+
+/* ---------------- 报告 / 复盘 ---------------- */
+let game = null;      // 当前对局元信息
+let moves = [];       // 着法列表
+let pos = 0;          // 已走步数 0..moves.length; 棋盘显示走完 pos 步之后的局面
+let lastAi = null;    // 最近一次 AI 分析结果, 用于"把评分记到这一步"
+
+/** pos 步之后的局面 FEN: 0 步用起始局面, 否则用第 pos 步的 fen_after */
+function boardFen() {
+  if (pos <= 0) return game.start_fen || START_FEN;
+  return moves[pos - 1].fen_after || game.start_fen || START_FEN;
+}
+
+async function openReview(id) {
+  $('listStatus').textContent = '打开中…';
+  try {
+    const d = await api('/api/games/' + id);
+    game = d; moves = d.moves || []; pos = moves.length;
+    $('listView').classList.add('hidden');
+    $('reviewView').classList.remove('hidden');
+    $('rName').textContent = (game.name || ('#' + game.id));
+    $('rMeta').textContent = [CAT_NAME[game.category] || game.category,
+      '红 ' + (game.red_name || '?') + ' / 黑 ' + (game.black_name || '?'),
+      '结果 ' + (game.result || '*'), '共 ' + moves.length + ' 步',
+      game.tags ? '#' + game.tags.split(',').join(' #') : '',
+      game.note || ''].filter(Boolean).join(' · ');
+    syncExportLink();
+    $('rText').value = '';
+    renderMoves();
+    selectPos(pos);
+  } catch (e) {
+    $('listStatus').className = 'status err';
+    $('listStatus').textContent = e.message;
+  }
+}
+
+function closeReview() {
+  $('reviewView').classList.add('hidden');
+  $('listView').classList.remove('hidden');
+  loadList();
+}
+
+function renderMoves() {
+  const box = $('rMoves');
+  box.innerHTML = '';
+  const mk = (i, label, cn, iccs, extra) => {
+    const row = document.createElement('div');
+    row.className = 'mv';
+    row.dataset.i = i;
+    row.innerHTML = '<span class="no">' + esc(label) + '</span>' +
+      '<span class="cn">' + esc(cn) + '</span>' +
+      '<span class="ic">' + esc(iccs || '') + '</span>' + (extra || '');
+    row.addEventListener('click', () => selectPos(i));
+    box.appendChild(row);
+  };
+  mk(0, '开局', game.start_fen ? '起始局面' : '', '');
+  moves.forEach((m, i) => {
+    let sc = '';
+    if (m.score_mate !== null && m.score_mate !== undefined) {
+      sc = '<span class="sc' + (m.score_mate < 0 ? ' neg' : '') + '">杀 ' + m.score_mate + '</span>';
+    } else if (m.score_cp !== null && m.score_cp !== undefined) {
+      sc = '<span class="sc' + (m.score_cp < 0 ? ' neg' : '') + '">' +
+           (m.score_cp > 0 ? '+' : '') + m.score_cp + '</span>';
+    }
+    const cm = m.comment ? '<span class="cm">' + esc(m.comment) + '</span>' : '<span class="cm"></span>';
+    const key = m.is_key ? '<span class="key">★</span>' : '';
+    mk(i + 1, (m.ply % 2 ? (Math.ceil(m.ply / 2) + '.') : '') + (m.side === 'red' ? '红' : '黑'),
+       m.chinese || '', m.iccs, sc + key + cm);
+  });
+}
+
+/** 选中"走完 index 步之后"的局面: index=0 是起始局面, index=k 是第 k 步走完 */
+function selectPos(index) {
+  pos = Math.max(0, Math.min(index, moves.length));
+  const from = pos > 0 ? moves[pos - 1].from_sq : null;
+  const to = pos > 0 ? moves[pos - 1].to_sq : null;
+  renderBoard(boardFen(), from, to);
+
+  [...$('rMoves').children].forEach(row => row.classList.toggle('on', Number(row.dataset.i) === pos));
+  const on = $('rMoves').querySelector('.mv.on');
+  if (on) on.scrollIntoView({block: 'nearest'});
+
+  const mv = pos > 0 ? moves[pos - 1] : null;
+  $('rPos').textContent = '第 ' + pos + ' / ' + moves.length + ' 步之后' +
+    (mv ? '　（这一步：' + mv.chinese + ' ' + mv.iccs + '）' : '　（起始局面，轮到' +
+     (boardFen().split(/\s+/)[1] === 'b' ? '黑方' : '红方') + '）');
+  $('rMoveTitle').textContent = mv ? ('第 ' + pos + ' 步：' + mv.chinese + '（' + mv.iccs + '）') : '开局（还没有着法）';
+  $('rComment').value = mv ? (mv.comment || '') : '';
+  $('rComment').disabled = !mv;
+  $('rSave').disabled = !mv;
+  $('rKey').checked = !!(mv && mv.is_key);
+  $('rKey').disabled = !mv;
+  $('rAnalyze').disabled = !mv;
+  $('rAi').textContent = '';
+  $('rAiSave').classList.add('hidden');
+  lastAi = null;
+}
+
+async function saveComment() {
+  const mv = moves[pos - 1];
+  if (!mv) return;
+  try {
+    const d = await api('/api/games/' + game.id + '/move/' + mv.id + '/comment', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({comment: $('rComment').value, is_key: $('rKey').checked}),
+    });
+    Object.assign(mv, d.move);
+    renderMoves();
+    [...$('rMoves').children].forEach(row => row.classList.toggle('on', Number(row.dataset.i) === pos));
+    $('rAi').textContent = '评语已保存';
+  } catch (e) {
+    $('rAi').textContent = e.message;
+  }
+}
+
+/* 分析"这一步之前"的局面, 并把它与实战走的那一步做个对比 */
+async function analyzeMove() {
+  const mv = moves[pos - 1];
+  if (!mv) return;
+  $('rAnalyze').disabled = true;
+  $('rAi').textContent = '引擎分析中…';
+  try {
+    const d = await api('/api/analyze', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({fen: mv.fen_before}),
+    });
+    const score = (d.mate !== null && d.mate !== undefined)
+      ? ('绝杀 ' + d.mate + ' 步')
+      : (d.score === null || d.score === undefined ? '未获取'
+         : ((d.score > 0 ? '+' : '') + d.score + ' 厘兵（走子方视角）'));
+    const same = d.bestmove && d.bestmove === mv.iccs;
+    $('rAi').innerHTML =
+      '这一步之前轮' + esc(d.side || '') + '走，引擎评分 <span class="big">' + esc(score) + '</span><br>' +
+      '引擎首选：<b>' + esc(d.bestmove || '无') + '</b> ' + esc(d.bestmove_cn || '') + '<br>' +
+      '实战走的是：<b>' + esc(mv.chinese) + '</b> ' + esc(mv.iccs) +
+      (same ? '　（与引擎首选一致）' : '');
+    lastAi = d;
+    if (!same) $('rAiSave').classList.remove('hidden');
+  } catch (e) {
+    $('rAi').textContent = '分析失败: ' + e.message;
+  } finally {
+    $('rAnalyze').disabled = false;
+  }
+}
+
+/* 把评分写到这一步上。分析的是 fen_before, 引擎报的就是"走这一步的人"的视角,
+   和"记录评分"存下来的口径一致, 所以照抄即可(不要取负)。 */
+async function saveScore() {
+  const mv = moves[pos - 1];
+  if (!mv || !lastAi) return;
+  const body = {eval_by: 'engine'};
+  if (lastAi.mate !== null && lastAi.mate !== undefined) {
+    body.score_mate = lastAi.mate;
+  } else if (lastAi.score !== null && lastAi.score !== undefined) {
+    body.score_cp = lastAi.score;
+  } else {
+    return;
+  }
+  const d = await api('/api/games/' + game.id + '/move/' + mv.id + '/comment', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(body),
+  });
+  Object.assign(mv, d.move);
+  renderMoves();
+  selectPos(pos);
+  $('rAi').textContent = '评分已记到第 ' + pos + ' 步';
+}
+
+/** 导出地址：fmt 之外，pgn 还可以选中文着法；download 为真时后端会带下载头 */
+function exportUrl(download) {
+  const fmt = $('rFmt').value;
+  let url = '/api/games/' + game.id + '/export?fmt=' + fmt;
+  if (fmt === 'pgn' && $('rCn').checked) url += '&move_format=chinese';
+  if (download) url += '&download=1';
+  return url;
+}
+
+function syncExportLink() {
+  if (!game) return;
+  $('rDownload').href = exportUrl(true);
+}
+
+async function doExport() {
+  const fmt = $('rFmt').value;
+  syncExportLink();
+  $('rExportStatus').className = 'status';
+  $('rExportStatus').textContent = '生成中…';
+  try {
+    const resp = await fetch(exportUrl(false));
+    if (!resp.ok) throw new Error('请求失败 HTTP ' + resp.status);
+    $('rText').value = await resp.text();
+    $('rExportStatus').textContent = '已生成 ' + fmt + '，点「下载文件」保存到本地（也可直接复制上面的文本）';
+  } catch (e) {
+    $('rExportStatus').className = 'status err';
+    $('rExportStatus').textContent = e.message;
+  }
+}
+
+/* ---------------- 导入 ---------------- */
+async function doImport() {
+  const content = $('impText').value;
+  if (!content.trim()) { impStatus('请先把棋谱贴进文本框', true); return; }
+  $('impStatus').className = 'status';
+  $('impStatus').textContent = '导入中…';
+  try {
+    const d = await api('/api/games/import', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({content: content.trim(), fmt: $('impFmt').value || undefined,
+                            name: $('impName').value.trim() || undefined}),
+    });
+    impStatus('导入成功：' + d.name + '（' + d.fmt + '，' + d.move_count + ' 步）' +
+              (d.warnings && d.warnings.length ? '\n' + d.warnings.join('\n') : ''), false);
+    $('impText').value = '';
+    $('impName').value = '';
+    loadList();
+  } catch (e) {
+    impStatus(e.message, true);
+  }
+}
+
+function impStatus(text, isErr) {
+  const el = $('impStatus');
+  el.className = 'status' + (isErr ? ' err' : '');
+  el.textContent = text;
+}
+
+/* ---------------- 绑定 ---------------- */
+$('fGo').addEventListener('click', loadList);
+$('fReset').addEventListener('click', () => {
+  $('fCat').value = ''; $('fTag').value = ''; $('fKw').value = ''; loadList();
+});
+$('fKw').addEventListener('keydown', e => { if (e.key === 'Enter') loadList(); });
+$('rBack').addEventListener('click', closeReview);
+$('rFirst').addEventListener('click', () => selectPos(0));
+$('rPrev').addEventListener('click', () => selectPos(pos - 1));
+$('rNext').addEventListener('click', () => selectPos(pos + 1));
+$('rLast').addEventListener('click', () => selectPos(moves.length));
+$('rSave').addEventListener('click', saveComment);
+$('rKey').addEventListener('change', saveComment);
+$('rAnalyze').addEventListener('click', analyzeMove);
+$('rAiSave').addEventListener('click', saveScore);
+$('rExport').addEventListener('click', doExport);
+$('rFmt').addEventListener('change', syncExportLink);
+$('rCn').addEventListener('change', syncExportLink);
+$('impGo').addEventListener('click', doImport);
+$('impFile').addEventListener('change', async () => {
+  const f = $('impFile').files[0];
+  if (!f) return;
+  $('impText').value = await f.text();       // 选文件就把内容读进文本框, 剩下的走同一个导入流程
+});
+
+drawLines();
+loadList();
+
+/* 从下棋页点"我的棋局"过来时, 允许用 ?game=<id> 直接打开复盘 */
+const wantId = new URLSearchParams(location.search).get('game');
+if (wantId) openReview(wantId);
+</script>
+</body>
+</html>
