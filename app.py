@@ -20,7 +20,7 @@ import threading
 from flask import Flask, jsonify, render_template, request
 
 import games_routes
-from chess_engine import (
+from core.chess_engine import (
     DEFAULT_MOVETIME,
     ENGINE_HASH_MB,
     ENGINE_MULTIPV,
@@ -31,8 +31,8 @@ from chess_engine import (
     NNUE_PATH,
     START_FEN,
 )
-from coord_utils import GRID_ORIENTATION, iccs_to_chinese, iccs_to_grid, parse_fen, pv_to_chinese
-from explainer import llm_configured, pick_best_move
+from core.coord_utils import GRID_ORIENTATION, iccs_to_chinese, iccs_to_grid, parse_fen, pv_to_chinese
+from core.explainer import llm_configured, pick_best_move
 
 app = Flask(__name__)
 

@@ -14,7 +14,7 @@ isLegalMove), 这里是后端侧的同一套规则, 供保存与导入时校验�
 与 coord_utils.fen_to_grid() 的输出、以及前端 grid 完全一致。
 """
 
-from coord_utils import FILES, GRID_COLS, GRID_ROWS, fen_to_grid, grid_to_iccs, iccs_to_grid
+from .coord_utils import FILES, GRID_COLS, GRID_ROWS, fen_to_grid, grid_to_iccs, iccs_to_grid
 
 PIECE_CHARS = set("KABNRCPkabnrcp")
 
