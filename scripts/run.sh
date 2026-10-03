@@ -24,7 +24,10 @@
 #      这样 main 与 feature/* 的同源文件能保持逐字节一致（合并时更省事）。
 #   3) 日志 scripts/.logs/<模块>.log、PID scripts/.pids/<模块>.pid，
 #      统一放在**主仓库**下（跨 worktree 共享，所以 worktree 里也能 stop）。
-#   4) mobile 目前只有 README，没有 app.py -> 提示“尚无启动入口”并跳过，不算失败。
+#      PID 文件里是 python 上报的**原生 PID**（Windows 下即 taskkill 认的那个），
+#      所以关掉终端、换个 Git Bash 会话，stop 依然有效。
+#   4) mobile 与 main 同源，也有 app.py，所以会真的起在 5002；
+#      将来它若退回「只有 README」的占位状态，脚本会提示“尚无启动入口”并跳过。
 # =============================================================================
 set -euo pipefail
 
@@ -133,8 +136,36 @@ pick_python() {
   return 0
 }
 
+# Windows 上 Git Bash 的 $! 是 MSYS 自己的 PID（同一个 PID 换个会话就不认了），
+# 所以 PID 文件里存的是 python 自己上报的「原生 PID」——Windows 下正好是 taskkill 认的那个。
+case "$(uname -s 2>/dev/null)" in
+  MINGW*|MSYS*|CYGWIN*) ON_WINDOWS=1 ;;
+  *)                    ON_WINDOWS=0 ;;
+esac
+
 pid_of() { cat "$PID_DIR/$1.pid" 2>/dev/null || true; }
-is_alive() { local p="$1"; [ -n "$p" ] && kill -0 "$p" 2>/dev/null; }
+
+# 进程是否还活着：Windows 用 tasklist（认原生 PID），其它平台用 kill -0
+is_alive() {
+  local p="$1"
+  [ -n "$p" ] || return 1
+  if [ "$ON_WINDOWS" -eq 1 ]; then
+    tasklist //FI "PID eq $p" //NH 2>/dev/null | grep -qw -- "$p"
+  else
+    kill -0 "$p" 2>/dev/null
+  fi
+}
+
+# 结束进程：Windows 用 taskkill /F（原生 PID），其它平台先发 TERM
+kill_pid() {
+  local p="$1"
+  [ -n "$p" ] || return 0
+  if [ "$ON_WINDOWS" -eq 1 ]; then
+    taskkill //PID "$p" //F >/dev/null 2>&1 || true
+  else
+    kill "$p" 2>/dev/null || true
+  fi
+}
 
 # 等端口起来（同时监控进程是否已经挂了，挂了就把日志尾巴打出来）
 wait_http() {
@@ -179,7 +210,7 @@ EOF
 # 启动单个模块
 start_one() {
   local name="$1" bg="$2"
-  local port dir py code pid cur_pid
+  local port dir py code pid cur_pid native pidfile
   port="$(port_of "$name")"
 
   dir="$(resolve_dir "$name")" || return 1
@@ -205,21 +236,38 @@ start_one() {
   sub "python: $py"
   sub "日志: $LOG_DIR/$name.log"
 
-  # 不改动 app.py（里面把端口写死成 5000）：导入模块后用指定端口起服务
-  code='import sys; sys.path.insert(0, "."); import app as m; m.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)'
+  # 不改动 app.py（里面把端口写死成 5000）：导入模块后用指定端口起服务。
+  # 顺带让 python 把自己的原生 PID 写进 argv[2] 指定的文件：只有这个 PID
+  # 换会话后还能被 Windows 的 taskkill 认出来（$! 是 MSYS 的 PID，会失效）。
+  code='import os, sys; sys.path.insert(0, "."); import app as m; open(sys.argv[2], "w").write(str(os.getpid())); m.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)'
+  pidfile="$PID_DIR/$name.pid"
+  rm -f "$pidfile"
 
-  ( cd "$dir" && exec "$py" -u -c "$code" "$port" ) >>"$LOG_DIR/$name.log" 2>&1 &
+  ( cd "$dir" && exec "$py" -u -c "$code" "$port" "$pidfile" ) >>"$LOG_DIR/$name.log" 2>&1 &
   pid=$!
-  printf '%s\n' "$pid" >"$PID_DIR/$name.pid"
-  sub "PID $pid -> http://127.0.0.1:$port"
 
-  wait_http "$name" "$port" "$pid" || true
+  # 等 python 把原生 PID 写出来（这一步写不出来基本就是没起来）
+  native=""
+  local i=0
+  while [ "$i" -lt 20 ]; do
+    native="$(cat "$pidfile" 2>/dev/null || true)"
+    [ -n "$native" ] && break
+    sleep 0.1
+    i=$((i + 1))
+  done
+  if [ -n "$native" ]; then
+    sub "原生 PID $native -> http://127.0.0.1:$port"
+  else
+    warn "$name 没写出 PID 文件（可能启动失败），看日志: $LOG_DIR/$name.log"
+  fi
+
+  wait_http "$name" "$port" "$native" || true
 
   if [ "$bg" -eq 0 ]; then
     ok "$name 前台运行中，Ctrl-C 停止"
-    trap 'kill "$pid" 2>/dev/null || true; rm -f "$PID_DIR/$name.pid"' INT TERM
+    trap 'kill_pid "$native"; rm -f "$pidfile"' INT TERM
     wait "$pid" 2>/dev/null || true
-    rm -f "$PID_DIR/$name.pid"
+    rm -f "$pidfile"
     ok "$name 已停止"
   else
     ok "$name 已后台启动"
@@ -239,15 +287,15 @@ cmd_stop() {
     fi
     pid="$(cat "$pidf")"
     if is_alive "$pid"; then
-      kill "$pid" 2>/dev/null || true
+      kill_pid "$pid"
       i=0
       while [ "$i" -lt 20 ] && is_alive "$pid"; do
         sleep 0.3
         i=$((i + 1))
       done
       if is_alive "$pid"; then
-        warn "$name(PID $pid) 没退出，改用 SIGKILL"
-        kill -9 "$pid" 2>/dev/null || true
+        warn "$name(PID $pid) 没退出，再强制结束一次"
+        kill_pid "$pid"
       fi
       ok "$name 已停止（PID $pid）"
     else
