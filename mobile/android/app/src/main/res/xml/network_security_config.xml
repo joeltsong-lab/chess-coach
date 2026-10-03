@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  明文 HTTP 放行（局域网访问电脑上的 Flask）。
+
+  说明：Network Security Config 的 <domain> 只认主机名，不支持 192.168.x.x/16
+  这类 CIDR 网段。由于用户可以在设置里填任意局域网 IP，无法逐个列举，
+  因此这里放开 base-config 的 cleartextTrafficPermitted。
+  该 App 仅用于同一 Wi-Fi 下访问自建服务，属于开发/局域网工具，可接受。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

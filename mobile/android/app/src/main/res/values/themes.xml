@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 基础主题：无 ActionBar（设置页用，保留状态栏）
+         固定浅色：布局里的背景/文字颜色是按浅色配的，跟随系统深色会看不清 -->
+    <style name="Theme.ChessCoach" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/brand</item>
+        <item name="colorPrimaryDark">@color/brand_dark</item>
+        <item name="android:windowBackground">@color/bg</item>
+    </style>
+
+    <!-- 主界面主题：全屏，隐藏状态栏与导航栏，适配刘海 -->
+    <style name="Theme.ChessCoach.Fullscreen">
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode" tools:targetApi="27">shortEdges</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+
+</resources>

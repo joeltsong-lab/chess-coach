@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">象棋教练</string>
+
+    <!-- 连接设置页 -->
+    <string name="config_title">连接电脑</string>
+    <string name="config_intro">电脑上先运行 Flask 服务（scripts/run.sh mobile），手机与电脑连同一个 Wi-Fi。</string>
+    <string name="label_host">电脑 IP 地址</string>
+    <string name="hint_host">192.168.1.100</string>
+    <string name="label_port">端口</string>
+    <string name="label_token">访问 Token</string>
+    <string name="hint_token">可选，服务端设了 MOBILE_TOKEN 才需要</string>
+    <string name="label_token_switch">启用 Token</string>
+    <string name="btn_test">测试连接</string>
+    <string name="btn_save">保存</string>
+    <string name="testing">正在测试连接…</string>
+    <string name="config_saved">已保存</string>
+    <string name="err_host_empty">请先填写电脑 IP 地址</string>
+    <string name="err_port_invalid">端口必须是 1-65535 的数字</string>
+
+    <!-- 测试结果：%1$d = HTTP 状态码，%2$s = 响应内容 -->
+    <string name="test_result_ok">连接成功（HTTP %1$d）\n%2$s</string>
+    <string name="test_result_bad">连接失败（HTTP %1$d）\n%2$s</string>
+    <string name="test_failed">无法连接：%1$s\n请检查 IP / 端口，并确认电脑服务已启动、在同一 Wi-Fi。</string>
+    <string name="test_result_ok_short">连接成功</string>
+    <string name="test_result_bad_short">连接失败</string>
+
+    <!-- 主界面 -->
+    <string name="load_failed_title">无法连接到电脑</string>
+    <string name="load_failed_msg">%1$s\n\n请确认：\n1) 电脑上的服务正在运行\n2) 手机和电脑连的是同一个 Wi-Fi\n3) 设置里的 IP 和端口正确</string>
+    <string name="btn_retry">重试</string>
+    <string name="btn_settings">修改设置</string>
+</resources>

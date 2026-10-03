@@ -1,0 +1,123 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="21507" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="vc-0001">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="21505"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--Chess Coach View Controller-->
+        <scene sceneID="sc-0001">
+            <objects>
+                <viewController id="vc-0001" customClass="ViewController" customModule="ChessCoach" customModuleProvider="target" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="vw-0001">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <webView contentMode="scaleToFill" translatesAutoresizingMaskIntoConstraints="NO" id="wv-0001">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                                <color key="backgroundColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                            </webView>
+                            <view contentMode="scaleToFill" hidden="YES" translatesAutoresizingMaskIntoConstraints="NO" id="ov-0001">
+                                <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                                <subviews>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="无法连接到电脑" textAlignment="center" lineBreakMode="wordWrap" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" translatesAutoresizingMaskIntoConstraints="NO" id="lb-0001">
+                                        <rect key="frame" x="46" y="300" width="301" height="24"/>
+                                        <fontDescription key="fontDescription" type="system" weight="semibold" pointSize="20"/>
+                                        <color key="textColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                        <nil key="highlightedColor"/>
+                                    </label>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" textAlignment="center" lineBreakMode="wordWrap" numberOfLines="0" baselineAdjustment="alignBaselines" adjustsFontForContentSizeCategory="YES" translatesAutoresizingMaskIntoConstraints="NO" id="lb-0002">
+                                        <rect key="frame" x="28" y="338" width="337" height="34"/>
+                                        <string key="text">请确认电脑上的服务正在运行，手机与电脑连的是同一个 Wi-Fi。</string>
+                                        <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                        <color key="textColor" white="1" alpha="0.75" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                        <nil key="highlightedColor"/>
+                                    </label>
+                                    <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="bt-0001">
+                                        <rect key="frame" x="86.5" y="400" width="220" height="44"/>
+                                        <color key="backgroundColor" red="0.75294117647058822" green="0.41568627450980394" blue="0.16862745098039217" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="220" id="o11"/>
+                                            <constraint firstAttribute="height" constant="44" id="o12"/>
+                                        </constraints>
+                                        <fontDescription key="fontDescription" type="system" weight="medium" pointSize="16"/>
+                                        <state key="normal" title="重新连接">
+                                            <color key="titleColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                        </state>
+                                        <userDefinedRuntimeAttributes>
+                                            <userDefinedRuntimeAttribute type="number" keyPath="layer.cornerRadius">
+                                                <real key="value" value="10"/>
+                                            </userDefinedRuntimeAttribute>
+                                        </userDefinedRuntimeAttributes>
+                                        <connections>
+                                            <action selector="retryTapped:" destination="vc-0001" eventType="touchUpInside" id="ac-0001"/>
+                                        </connections>
+                                    </button>
+                                    <button opaque="NO" contentMode="scaleToFill" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="bt-0002">
+                                        <rect key="frame" x="86.5" y="456" width="220" height="44"/>
+                                        <color key="backgroundColor" white="1" alpha="0.14999999999999999" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                        <constraints>
+                                            <constraint firstAttribute="width" constant="220" id="o15"/>
+                                            <constraint firstAttribute="height" constant="44" id="o16"/>
+                                        </constraints>
+                                        <fontDescription key="fontDescription" type="system" pointSize="15"/>
+                                        <state key="normal" title="修改电脑地址">
+                                            <color key="titleColor" white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+                                        </state>
+                                        <userDefinedRuntimeAttributes>
+                                            <userDefinedRuntimeAttribute type="number" keyPath="layer.cornerRadius">
+                                                <real key="value" value="10"/>
+                                            </userDefinedRuntimeAttribute>
+                                        </userDefinedRuntimeAttributes>
+                                        <connections>
+                                            <action selector="settingsTapped:" destination="vc-0001" eventType="touchUpInside" id="ac-0002"/>
+                                        </connections>
+                                    </button>
+                                </subviews>
+                                <color key="backgroundColor" red="0.10196078431372549" green="0.10196078431372549" blue="0.1803921568627451" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
+                                <constraints>
+                                    <constraint firstItem="lb-0001" firstAttribute="centerX" secondItem="ov-0001" secondAttribute="centerX" id="o01"/>
+                                    <constraint firstItem="lb-0001" firstAttribute="centerY" secondItem="ov-0001" secondAttribute="centerY" constant="-80" id="o02"/>
+                                    <constraint firstItem="lb-0001" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="ov-0001" secondAttribute="leading" constant="24" id="o03"/>
+                                    <constraint firstItem="lb-0001" firstAttribute="trailing" relation="lessThanOrEqual" secondItem="ov-0001" secondAttribute="trailing" constant="-24" id="o04"/>
+                                    <constraint firstItem="lb-0002" firstAttribute="centerX" secondItem="ov-0001" secondAttribute="centerX" id="o05"/>
+                                    <constraint firstItem="lb-0002" firstAttribute="top" secondItem="lb-0001" secondAttribute="bottom" constant="14" id="o06"/>
+                                    <constraint firstItem="lb-0002" firstAttribute="leading" relation="greaterThanOrEqual" secondItem="ov-0001" secondAttribute="leading" constant="28" id="o07"/>
+                                    <constraint firstItem="lb-0002" firstAttribute="trailing" relation="lessThanOrEqual" secondItem="ov-0001" secondAttribute="trailing" constant="-28" id="o08"/>
+                                    <constraint firstItem="bt-0001" firstAttribute="centerX" secondItem="ov-0001" secondAttribute="centerX" id="o09"/>
+                                    <constraint firstItem="bt-0001" firstAttribute="top" secondItem="lb-0002" secondAttribute="bottom" constant="28" id="o10"/>
+                                    <constraint firstItem="bt-0002" firstAttribute="centerX" secondItem="ov-0001" secondAttribute="centerX" id="o13"/>
+                                    <constraint firstItem="bt-0002" firstAttribute="top" secondItem="bt-0001" secondAttribute="bottom" constant="12" id="o14"/>
+                                </constraints>
+                            </view>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="sa-0001"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                        <constraints>
+                            <constraint firstItem="wv-0001" firstAttribute="leading" secondItem="vw-0001" secondAttribute="leading" id="c01"/>
+                            <constraint firstAttribute="trailing" secondItem="wv-0001" secondAttribute="trailing" id="c02"/>
+                            <constraint firstItem="wv-0001" firstAttribute="top" secondItem="vw-0001" secondAttribute="top" id="c03"/>
+                            <constraint firstAttribute="bottom" secondItem="wv-0001" secondAttribute="bottom" id="c04"/>
+                            <constraint firstItem="ov-0001" firstAttribute="leading" secondItem="vw-0001" secondAttribute="leading" id="c05"/>
+                            <constraint firstAttribute="trailing" secondItem="ov-0001" secondAttribute="trailing" id="c06"/>
+                            <constraint firstItem="ov-0001" firstAttribute="top" secondItem="vw-0001" secondAttribute="top" id="c07"/>
+                            <constraint firstAttribute="bottom" secondItem="ov-0001" secondAttribute="bottom" id="c08"/>
+                        </constraints>
+                    </view>
+                    <connections>
+                        <outlet property="overlayDetailLabel" destination="lb-0002" id="oc-0002"/>
+                        <outlet property="overlayView" destination="ov-0001" id="oc-0003"/>
+                        <outlet property="retryButton" destination="bt-0001" id="oc-0004"/>
+                        <outlet property="settingsButton" destination="bt-0002" id="oc-0005"/>
+                        <outlet property="webView" destination="wv-0001" id="oc-0001"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="fr-0001" userLabel="First Responder" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="53" y="375"/>
+        </scene>
+    </scenes>
+</document>

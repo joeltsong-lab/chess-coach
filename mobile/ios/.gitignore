@@ -1,0 +1,6 @@
+# Xcode 本地产物（不入库）
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+.DS_Store
