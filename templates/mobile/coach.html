@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#8a6a3a">
+<title>象棋教练 · 手机版</title>
+
+<!-- PWA：可「添加到主屏幕」，全屏当 App 用 -->
+<link rel="manifest" href="/static/mobile/manifest.json">
+<link rel="apple-touch-icon" href="/static/mobile/icon-192.png">
+<meta name="application-name" content="象棋教练">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="象棋教练">
+<meta name="mobile-web-app-capable" content="yes">
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    background:#f5f2ec;color:#2b2b2b;
+    font-family:'Microsoft YaHei',-apple-system,'Segoe UI',Roboto,sans-serif;
+    overscroll-behavior:none;
+    padding-bottom:env(safe-area-inset-bottom);
+  }
+
+  /* ---------- 顶栏 ---------- */
+  .topbar{
+    position:sticky;top:0;z-index:30;
+    display:flex;align-items:center;gap:10px;
+    padding:10px 12px;padding-top:calc(10px + env(safe-area-inset-top));
+    background:#8a6a3a;color:#fdf6e6;
+    box-shadow:0 2px 6px rgba(0,0,0,.18);
+  }
+  .topbar .title{flex:1;font-size:16px;font-weight:700}
+  .topbar .title small{font-weight:400;font-size:12px;opacity:.8;margin-left:4px}
+  .topbar button{
+    background:rgba(255,255,255,.16);color:#fdf6e6;border:0;border-radius:8px;
+    font-size:15px;padding:8px 12px;cursor:pointer;min-height:40px;
+  }
+  .topbar button:active{background:rgba(255,255,255,.3)}
+  .topbar button.primary{background:#c0392b}
+  .topbar button.primary:disabled{background:#a98d7f;opacity:.7}
+
+  /* ---------- 布局：竖屏上下，横屏左右 ---------- */
+  .wrap{display:flex;flex-direction:column;gap:12px;padding:12px;max-width:1100px;margin:0 auto}
+  .board-col{display:flex;flex-direction:column;align-items:center;gap:8px}
+  .panel-col{flex:1;min-width:0;display:flex;flex-direction:column;gap:10px}
+
+  /* ---------- 棋盘 ---------- */
+  .board{
+    position:relative;
+    width:min(96vw,520px);
+    aspect-ratio:9/10;
+    background:#f3dcb2;
+    border:3px solid #8a6a3a;
+    border-radius:8px;
+    container-type:inline-size;
+    user-select:none;touch-action:manipulation;
+  }
+  .lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .lines line{stroke:#8a6a3a;stroke-width:2;vector-effect:non-scaling-stroke}
+  .grid{position:absolute;inset:0;display:grid;
+        grid-template-columns:repeat(9,1fr);grid-template-rows:repeat(10,1fr)}
+  .cell{position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .piece{
+    width:86%;height:86%;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    font-size:5.2cqw;font-weight:700;line-height:1;
+    background:radial-gradient(circle at 35% 28%,#fffdf7,#eed9b4);
+    border:2px solid #b98b4e;box-shadow:0 1px 2px rgba(0,0,0,.3);
+    transition:box-shadow .12s,transform .12s;
+  }
+  .piece.red{color:#c0392b;border-color:#c0392b}
+  .piece.black{color:#1f2d3d;border-color:#1f2d3d}
+  /* 选中：金色光晕 */
+  .cell.sel .piece{
+    box-shadow:0 0 0 3px #e0a516,0 0 16px 5px rgba(224,165,22,.75);
+    transform:scale(1.04);
+  }
+  /* 合法落点小圆点 */
+  .dot{
+    position:absolute;width:26%;height:26%;border-radius:50%;
+    background:rgba(39,174,96,.7);pointer-events:none;
+    box-shadow:0 0 4px rgba(0,0,0,.25);
+  }
+  .cell.has-piece .dot{
+    background:transparent;border:3px solid rgba(39,174,96,.8);width:92%;height:92%;
+  }
+  .overlay{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  .turnbar{
+    width:min(96vw,520px);display:flex;align-items:center;justify-content:space-between;
+    font-size:13px;color:#666;padding:2px 2px 0;
+  }
+  .turnbar .who{font-weight:700;font-size:14px}
+  .turnbar .who.w{color:#c0392b}
+  .turnbar .who.b{color:#1f2d3d}
+  .turnbar .flag{color:#c0392b;font-weight:700}
+
+  /* ---------- 工具条 ---------- */
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;width:min(96vw,520px);justify-content:center}
+  .toolbar button{
+    flex:1 1 0;min-width:64px;min-height:44px;padding:8px 6px;
+    border:1px solid #ddd0b8;border-radius:8px;background:#efe7d9;color:#7a5a20;
+    font-size:13px;cursor:pointer;
+  }
+  .toolbar button:active{background:#e3d7c0}
+  .toolbar button:disabled{opacity:.45;cursor:not-allowed}
+
+  /* ---------- 结果面板 ---------- */
+  .status{font-size:13px;color:#2d86c4;min-height:18px;line-height:1.5}
+  .status.err{color:#c0392b}
+  .card{
+    background:#fffdf6;border:1px solid #e6ded0;border-radius:10px;padding:12px 14px;
+  }
+  .card:empty{display:none}
+  .card h2{margin:0 0 8px;font-size:13px;color:#a08a63;font-weight:700;
+           display:flex;align-items:center;gap:8px}
+  .card h2 .tag{font-size:11px;font-weight:400;color:#b3a58c}
+  .aimove{font-size:26px;font-weight:700;color:#b8860b;letter-spacing:2px;line-height:1.15}
+  .aimove .iccs{font-size:12px;font-weight:400;color:#b3a58c;letter-spacing:0;margin-left:8px}
+  .aiscore{display:inline-block;margin-top:6px;font-size:14px;font-weight:700;
+           color:#666;font-family:Consolas,Monaco,monospace}
+  .aiscore.red{color:#c0392b}
+  .aiscore.black{color:#1f2d3d}
+  .aiscore.big{background:#fff2cf;border-radius:4px;padding:2px 8px}
+  .aiexp{margin-top:8px;font-size:13px;line-height:1.7;color:#444;white-space:pre-wrap}
+  .ainote{margin-top:6px;font-size:12px;color:#a08a63}
+  .badge{display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;
+         font-weight:700;color:#fff}
+  .badge.c-最佳{background:#27ae60}
+  .badge.c-可更好{background:#2d86c4}
+  .badge.c-疑手{background:#e08e0b}
+  .badge.c-失误{background:#c0392b}
+  .alt{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .alt button{padding:6px 12px;font-size:13px;background:#f4f1ea;color:#7a5a20;
+              border:1px solid #e0d6c2;border-radius:16px}
+  .alt button.on{background:#f6e6bd;border-color:#d9b463;color:#8a6a3a}
+  .alt button .t{font-size:11px;color:#b3a58c;margin-left:5px}
+  ol.pv{margin:6px 0 0;padding-left:20px}
+  ol.pv li{font-size:13px;line-height:1.7}
+  .muted{color:#aaa;font-size:13px}
+
+  /* ---------- 侧滑菜单 ---------- */
+  #scrim{position:fixed;inset:0;background:rgba(30,22,10,.4);opacity:0;
+         pointer-events:none;transition:opacity .2s;z-index:40}
+  #scrim.on{opacity:1;pointer-events:auto}
+  #drawer{
+    position:fixed;top:0;left:0;bottom:0;width:min(84vw,340px);z-index:50;
+    background:#fffdf7;box-shadow:2px 0 14px rgba(0,0,0,.25);
+    transform:translateX(-104%);transition:transform .22s;
+    display:flex;flex-direction:column;overflow-y:auto;
+    padding-top:env(safe-area-inset-top);
+  }
+  #drawer.on{transform:translateX(0)}
+  #drawer .dh{display:flex;align-items:center;gap:10px;padding:14px 16px;
+              background:#8a6a3a;color:#fdf6e6;position:sticky;top:0}
+  #drawer .dh b{flex:1;font-size:16px}
+  #drawer .dh button{background:rgba(255,255,255,.18);border:0;color:#fff;
+                     border-radius:8px;font-size:15px;padding:6px 10px}
+  #drawer .sec{padding:14px 16px;border-bottom:1px solid #eee4d3}
+  #drawer .sec h3{margin:0 0 10px;font-size:13px;color:#a08a63}
+  #drawer label.row{display:flex;align-items:center;justify-content:space-between;
+                    gap:10px;font-size:14px;color:#444;margin:9px 0}
+  #drawer label.row span{flex:1}
+  #drawer input[type=text],#drawer input[type=number],#drawer select{
+    padding:8px;border:1px solid #d5cdbe;border-radius:6px;font-size:14px;
+    background:#fff;font-family:inherit;max-width:180px;
+  }
+  #drawer input[type=checkbox]{width:22px;height:22px}
+  #drawer a.link{display:block;padding:12px 4px;font-size:15px;color:#7a5a20;
+                 text-decoration:none;border-bottom:1px solid #f2ece0}
+  #drawer a.link:active{background:#f7f1e6}
+  #drawer .hint{font-size:12px;color:#a08a63;line-height:1.6;margin-top:8px}
+
+  /* ---------- 弹窗 ---------- */
+  dialog{border:1px solid #ddd0b8;border-radius:10px;padding:16px 18px;background:#fffdf7;
+         color:#2b2b2b;font-family:inherit;width:min(94vw,540px);max-height:86vh;overflow:auto}
+  dialog::backdrop{background:rgba(40,30,15,.4)}
+  dialog h2{margin:0 0 12px;font-size:16px}
+  dialog label{display:block;font-size:12px;color:#666;margin:10px 0 4px}
+  dialog textarea,dialog input[type=text],dialog select{
+    width:100%;padding:9px;border:1px solid #d5cdbe;border-radius:6px;
+    font-size:14px;background:#fff;font-family:inherit}
+  dialog textarea{font-family:Consolas,Monaco,monospace;font-size:13px;resize:vertical}
+  .dlg-foot{display:flex;gap:10px;justify-content:flex-end;margin-top:16px}
+  .dlg-foot button{padding:10px 20px;border-radius:8px;font-size:14px;border:0;cursor:pointer}
+  .btn-main{background:#c0392b;color:#fff}
+  .btn-ghost{background:#efe7d9;color:#7a5a20;border:1px solid #ddd0b8 !important}
+
+  /* ---------- toast ---------- */
+  #toast{
+    position:fixed;left:50%;bottom:calc(28px + env(safe-area-inset-bottom));
+    transform:translateX(-50%) translateY(20px);
+    background:rgba(40,30,15,.92);color:#fff;padding:10px 18px;border-radius:22px;
+    font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s,transform .2s;
+    z-index:80;max-width:86vw;text-align:center;
+  }
+  #toast.on{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  /* ---------- 离线提示条 ---------- */
+  #offlineBar{
+    background:#c0392b;color:#fff;font-size:13px;text-align:center;
+    padding:9px 12px;line-height:1.5;
+  }
+  #offlineBar[hidden]{display:none}
+
+  /* ---------- 横屏：棋盘在左，结果在右 ---------- */
+  @media (orientation:landscape) and (min-width:640px){
+    .wrap{flex-direction:row;align-items:flex-start;gap:20px;padding:16px}
+    .board-col{flex:0 0 auto}
+    .board{width:min(52vw,calc(88vh*0.9),520px)}
+    .turnbar,.toolbar{width:min(52vw,calc(88vh*0.9),520px)}
+    .panel-col{min-height:70vh}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <button id="menuBtn" aria-label="菜单">☰</button>
+  <div class="title">象棋教练<small>手机版</small></div>
+  <button id="hintBtn" class="primary">AI提示</button>
+</header>
+
+<div id="offlineBar" hidden>⚠ 离线：需要连接电脑才能分析</div>
+
+<div class="wrap">
+  <section class="board-col">
+    <div id="board" class="board">
+      <svg id="lines" class="lines" viewBox="0 0 900 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div id="grid" class="grid"></div>
+      <svg id="overlay" class="overlay" viewBox="0 0 900 1000" preserveAspectRatio="none" aria-hidden="true">
+        <defs>
+          <marker id="headPick" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="3.2" markerHeight="3.2" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="rgba(231,76,60,.9)"></path>
+          </marker>
+          <marker id="headAlt" viewBox="0 0 10 10" refX="8" refY="5"
+                  markerWidth="3" markerHeight="3" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="rgba(41,128,185,.75)"></path>
+          </marker>
+        </defs>
+      </svg>
+    </div>
+    <div class="turnbar">
+      <span class="who" id="whoTurn">轮到红方</span>
+      <span id="moveCount" class="muted"></span>
+    </div>
+    <div class="toolbar">
+      <button id="undoBtn" title="回退一步">↩ 悔棋</button>
+      <button id="flipBtn" title="翻转显示">⇅ 换边</button>
+      <button id="syncBtn" title="粘贴 FEN / ICCS / PGN">⇄ 同步</button>
+      <button id="coachBtn" title="解说刚走的一步" disabled>🧑‍🏫 教练</button>
+      <button id="saveBtn" title="存为研究局">💾 保存</button>
+    </div>
+  </section>
+
+  <section class="panel-col">
+    <div class="status" id="status"></div>
+    <div class="card" id="coachCard"></div>
+    <div class="card" id="hintCard"></div>
+  </section>
+</div>
+
+<!-- 侧滑菜单 -->
+<div id="scrim"></div>
+<aside id="drawer">
+  <div class="dh"><b>菜单</b><button id="drawerClose">✕</button></div>
+
+  <div class="sec">
+    <h3>我的棋局</h3>
+    <a class="link" id="studiesLink" href="/studies">📂 打开「我的棋局」（复盘 / 导出）</a>
+  </div>
+
+  <div class="sec">
+    <h3>设置</h3>
+    <label class="row"><span>自动提示</span>
+      <input type="checkbox" id="setAuto"></label>
+    <label class="row"><span>搜索时长</span>
+      <select id="setPreset">
+        <option value="fast">快速（2 秒）</option>
+        <option value="standard">标准（5 秒）</option>
+        <option value="deep">深度（10 秒）</option>
+      </select></label>
+    <label class="row"><span>我执</span>
+      <select id="setTurn">
+        <option value="auto">不限（每步都提示）</option>
+        <option value="w">红方</option>
+        <option value="b">黑方</option>
+      </select></label>
+    <label class="row"><span>访问 Token</span>
+      <input type="text" id="setToken" placeholder="留空=不需要"></label>
+    <div class="hint">Token 与本机设置只存在这台手机浏览器里；电脑端设了 MOBILE_TOKEN 才需要填。</div>
+  </div>
+
+  <div class="sec">
+    <h3>引擎参数</h3>
+    <label class="row"><span>线程 Threads</span>
+      <input type="number" id="setThreads" min="1" max="64"></label>
+    <label class="row"><span>Hash (MB)</span>
+      <input type="number" id="setHash" min="1" max="4096"></label>
+    <label class="row"><span>MultiPV</span>
+      <input type="number" id="setMpv" min="1" max="8"></label>
+    <button id="engineApply" style="margin-top:6px;padding:9px 16px;border:0;border-radius:8px;
+            background:#8a6a3a;color:#fff;font-size:14px;cursor:pointer">应用引擎参数</button>
+    <div class="hint" id="setEngineHint"></div>
+  </div>
+
+  <div class="sec">
+    <h3>关于</h3>
+    <div class="hint">手机 Web 远程访问版：电脑跑 Flask，手机同 Wi-Fi 打开本页即可。
+      点棋子选中 → 点绿色小圆点落子；「AI提示」给出下一步最佳着法，走子后自动分析可开关。</div>
+  </div>
+</aside>
+
+<!-- 同步弹窗 -->
+<dialog id="syncDlg">
+  <h2>同步外部棋局</h2>
+  <label for="syncText">粘贴 FEN / ICCS / PGN / fenmoves / JSON（自动识别格式）</label>
+  <textarea id="syncText" rows="6" spellcheck="false"
+    placeholder="FEN：rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1&#10;ICCS：h2e2 h9g7 e3e4&#10;PGN：1. 炮二平五 马8进7 2. 马二进三 车9平8"></textarea>
+  <label for="syncFmt">格式</label>
+  <select id="syncFmt">
+    <option value="">自动识别</option>
+    <option value="fen">fen（只存局面）</option>
+    <option value="fenmoves">fenmoves</option>
+    <option value="iccs">iccs</option>
+    <option value="pgn">pgn</option>
+    <option value="json">json</option>
+  </select>
+  <div class="status" id="syncStatus"></div>
+  <div class="dlg-foot">
+    <button class="btn-ghost" id="syncCancel" type="button">取消</button>
+    <button class="btn-main" id="syncOk" type="button">导入到棋盘</button>
+  </div>
+</dialog>
+
+<!-- 保存弹窗 -->
+<dialog id="saveDlg">
+  <h2>保存为研究局</h2>
+  <label for="svName">名称</label>
+  <input type="text" id="svName" placeholder="如 2026-10-03 手机研究">
+  <label for="svNote">备注</label>
+  <textarea id="svNote" rows="2" placeholder="可留空"></textarea>
+  <label for="svTags">标签（逗号分隔）</label>
+  <input type="text" id="svTags" placeholder="手机,研究">
+  <div class="status" id="svStatus"></div>
+  <div class="dlg-foot">
+    <button class="btn-ghost" id="svCancel" type="button">取消</button>
+    <button class="btn-main" id="svOk" type="button">保存</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+const START_FEN = {{ start_fen | tojson }};
+const ENGINE_CONFIG = {{ engine_config | tojson }};
+const TOKEN_REQUIRED_INIT = {{ token_required | tojson }};
+
+const NAMES = {K:'帅',A:'仕',B:'相',N:'马',R:'车',C:'炮',P:'兵',
+               k:'将',a:'士',b:'象',n:'马',r:'车',c:'炮',p:'卒'};
+const PIECES = new Set(Object.keys(NAMES));
+const SVG_NS = 'http://www.w3.org/2000/svg';
+const FILES = 'abcdefghi';
+const TOKEN_KEY = 'mobile_token';
+const LS = {
+  auto: 'mobile_auto_hint', preset: 'mobile_preset',
+  turn: 'mobile_turn', token: TOKEN_KEY,
+};
+
+/* ---------- 坐标：ICCS <-> 棋盘行列（row0=黑方底线） ---------- */
+const rcToIccs = (r, c) => FILES[c] + (9 - r);
+function iccsToRc(sq) {
+  const c = FILES.indexOf(sq[0]);
+  const rank = parseInt(sq[1], 10);
+  if (c < 0 || Number.isNaN(rank)) return null;
+  return {r: 9 - rank, c};
+}
+const px = i => 50 + i * 100;   // 第 i 列交叉点
+const py = j => 50 + j * 100;   // 第 j 行交叉点
+const isRed = p => p === p.toUpperCase();
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+
+/* ---------- 状态 ---------- */
+let grid = [];          // grid[row][col]，row0=黑方底线
+let fen = START_FEN;
+let side = 'w';         // 该谁走
+let legal = {};         // {起点ICCS: [终点ICCS...]}
+let lastMove = null;    // {from_sq, to_sq, chinese, iccs}
+let inCheck = false;
+let gameOver = false;
+let selected = null;    // {r, c}
+let flipped = false;
+let baseFen = START_FEN;   // 这串着法的起始局面（保存用）
+let moveList = [];         // 已走着的 ICCS 列表
+let lastPlayed = null;     // {prevFen, iccs, chinese} 供教练解说
+let history = [];          // 悔棋栈
+let hint = null;           // 最近一次提示
+let busy = false;
+
+const gridEl = document.getElementById('grid');
+const overlayEl = document.getElementById('overlay');
+const statusEl = document.getElementById('status');
+const hintCardEl = document.getElementById('hintCard');
+const coachCardEl = document.getElementById('coachCard');
+const whoTurnEl = document.getElementById('whoTurn');
+const moveCountEl = document.getElementById('moveCount');
+const hintBtn = document.getElementById('hintBtn');
+const coachBtn = document.getElementById('coachBtn');
+const undoBtn = document.getElementById('undoBtn');
+
+/* ---------- 本地设置 ---------- */
+const setAutoEl = document.getElementById('setAuto');
+const setPresetEl = document.getElementById('setPreset');
+const setTurnEl = document.getElementById('setTurn');
+const setTokenEl = document.getElementById('setToken');
+const setThreadsEl = document.getElementById('setThreads');
+const setHashEl = document.getElementById('setHash');
+const setMpvEl = document.getElementById('setMpv');
+const setEngineHintEl = document.getElementById('setEngineHint');
+
+let settings = {auto: false, preset: 'standard', turn: 'auto', token: ''};
+
+function loadSettings() {
+  try {
+    settings.auto = localStorage.getItem(LS.auto) === '1';
+    settings.preset = localStorage.getItem(LS.preset) || 'standard';
+    settings.turn = localStorage.getItem(LS.turn) || 'auto';
+    settings.token = localStorage.getItem(LS.token) || '';
+  } catch (e) { /* 隐私模式禁用 localStorage 时用默认值 */ }
+  setAutoEl.checked = settings.auto;
+  setPresetEl.value = settings.preset;
+  setTurnEl.value = settings.turn;
+  setTokenEl.value = settings.token;
+}
+
+function saveSettings() {
+  settings.auto = setAutoEl.checked;
+  settings.preset = setPresetEl.value;
+  settings.turn = setTurnEl.value;
+  settings.token = setTokenEl.value.trim();
+  try {
+    localStorage.setItem(LS.auto, settings.auto ? '1' : '0');
+    localStorage.setItem(LS.preset, settings.preset);
+    localStorage.setItem(LS.turn, settings.turn);
+    localStorage.setItem(LS.token, settings.token);
+  } catch (e) { /* 忽略 */ }
+}
+
+/* ---------- HTTP ---------- */
+function apiHeaders() {
+  const h = {'Content-Type': 'application/json'};
+  if (settings.token) h['X-Mobile-Token'] = settings.token;
+  return h;
+}
+
+async function apiPost(url, body) {
+  const resp = await fetch(url, {method: 'POST', headers: apiHeaders(),
+                                 body: JSON.stringify(body || {})});
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* 下面统一报错 */ }
+  if (!resp.ok || !data || data.ok === false) {
+    const msg = (data && data.error) || ('请求失败 HTTP ' + resp.status);
+    const err = new Error(msg);
+    err.tokenRequired = !!(data && data.token_required);
+    throw err;
+  }
+  return data;
+}
+
+async function apiGet(url) {
+  const resp = await fetch(url, {headers: apiHeaders()});
+  let data = null;
+  try { data = await resp.json(); } catch (e) { /* 忽略 */ }
+  if (!resp.ok || !data || data.ok === false) {
+    const msg = (data && data.error) || ('请求失败 HTTP ' + resp.status);
+    const err = new Error(msg);
+    err.tokenRequired = !!(data && data.token_required);
+    throw err;
+  }
+  return data;
+}
+
+/* ---------- toast / 状态 ---------- */
+let toastTimer = null;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('on');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('on'), 2200);
+}
+function setStatus(msg, isErr) {
+  statusEl.className = 'status' + (isErr ? ' err' : '');
+  statusEl.textContent = msg || '';
+}
+
+/* ---------- FEN -> grid ---------- */
+function fenToGrid(text) {
+  const parts = String(text || '').trim().split(/\s+/);
+  const rows = (parts[0] || '').split('/');
+  if (rows.length !== 10) throw new Error('棋盘部分应为 10 行，实际 ' + rows.length + ' 行');
+  const g = [];
+  for (const row of rows) {
+    const cells = [];
+    for (const ch of row) {
+      if (/[0-9]/.test(ch)) { for (let i = 0; i < Number(ch); i++) cells.push(''); }
+      else if (PIECES.has(ch)) cells.push(ch);
+      else throw new Error('无法识别的棋子字符: ' + ch);
+    }
+    if (cells.length !== 9) throw new Error('每行应为 9 列: ' + row);
+    g.push(cells);
+  }
+  return g;
+}
+
+const viewRow = r => (flipped ? 9 - r : r);
+const viewCol = c => (flipped ? 8 - c : c);
+
+/* ---------- 棋盘线 ---------- */
+function drawLines() {
+  const svg = document.getElementById('lines');
+  svg.innerHTML = '';
+  const add = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(SVG_NS, 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    svg.appendChild(l);
+  };
+  for (let j = 0; j < 10; j++) add(px(0), py(j), px(8), py(j));
+  for (let i = 0; i < 9; i++) {
+    if (i === 0 || i === 8) add(px(i), py(0), px(i), py(9));
+    else { add(px(i), py(0), px(i), py(4)); add(px(i), py(5), px(i), py(9)); }
+  }
+  add(px(3), py(9), px(5), py(7)); add(px(5), py(9), px(3), py(7));
+  add(px(3), py(0), px(5), py(2)); add(px(5), py(0), px(3), py(2));
+}
+
+/* ---------- 渲染棋盘 ---------- */
+function legalTargets() {
+  if (!selected) return new Set();
+  const list = legal[rcToIccs(selected.r, selected.c)] || [];
+  return new Set(list.map(sq => { const rc = iccsToRc(sq); return rc ? rc.r + ',' + rc.c : ''; }));
+}
+
+function render() {
+  const targets = legalTargets();
+  gridEl.innerHTML = '';
+  for (let dr = 0; dr < 10; dr++) {
+    for (let dc = 0; dc < 9; dc++) {
+      const r = viewRow(dr), c = viewCol(dc);
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      const p = grid[r][c];
+      if (p) {
+        cell.classList.add('has-piece');
+        if (selected && selected.r === r && selected.c === c) cell.classList.add('sel');
+        const d = document.createElement('div');
+        d.className = 'piece ' + (isRed(p) ? 'red' : 'black');
+        d.textContent = NAMES[p] || p;
+        cell.appendChild(d);
+      }
+      if (targets.has(r + ',' + c)) {
+        const dot = document.createElement('div');
+        dot.className = 'dot';
+        cell.appendChild(dot);
+      }
+      cell.addEventListener('click', () => onCellClick(r, c));
+      gridEl.appendChild(cell);
+    }
+  }
+  renderOverlay();
+  whoTurnEl.textContent = gameOver ? '对局结束' :
+    ('轮到' + (side === 'w' ? '红方' : '黑方'));
+  whoTurnEl.className = 'who ' + (side === 'w' ? 'w' : 'b');
+  const flags = [];
+  if (inCheck) flags.push('被将军！');
+  if (flipped) flags.push('黑方在下方');
+  moveCountEl.textContent = (moveList.length ? moveList.length + ' 步' : '')
+    + (flags.length ? '　' + flags.join('　') : '');
+  undoBtn.disabled = history.length === 0;
+  coachBtn.disabled = !lastPlayed;
+}
+
+/* ---------- 覆盖层：上一步绿点 + 提示箭头 ---------- */
+function renderOverlay() {
+  overlayEl.querySelectorAll('line, circle, rect').forEach(n => n.remove());
+
+  // 上一步：起点绿点、终点绿框
+  if (lastMove && lastMove.from_sq && lastMove.to_sq) {
+    const f = iccsToRc(lastMove.from_sq), t = iccsToRc(lastMove.to_sq);
+    if (f) markDot(f, 'rgba(39,174,96,.85)', 16);
+    if (t) markRing(t, 'rgba(39,174,96,.9)', 46);
+  }
+
+  // AI 建议箭头
+  if (hint && hint.pick) {
+    const pick = hint.pick;
+    if (pick.from && pick.to) {
+      drawArrow({r: pick.from[0], c: pick.from[1]}, {r: pick.to[0], c: pick.to[1]},
+                'rgba(231,76,60,.9)', 'headPick', true);
+    }
+    // 其余候选用蓝色虚线
+    (hint.alts || []).slice(0, 2).forEach(c => {
+      if (c.from && c.to) {
+        drawArrow({r: c.from[0], c: c.from[1]}, {r: c.to[0], c: c.to[1]},
+                  'rgba(41,128,185,.6)', 'headAlt', false);
+      }
+    });
+  }
+}
+
+function markDot(rc, fill, radius) {
+  const cx = px(viewCol(rc.c)), cy = py(viewRow(rc.r));
+  const el = document.createElementNS(SVG_NS, 'circle');
+  el.setAttribute('cx', cx); el.setAttribute('cy', cy); el.setAttribute('r', radius);
+  el.setAttribute('fill', fill);
+  overlayEl.appendChild(el);
+}
+
+function markRing(rc, stroke, size) {
+  const x = px(viewCol(rc.c)) - size / 2, y = py(viewRow(rc.r)) - size / 2;
+  const el = document.createElementNS(SVG_NS, 'rect');
+  el.setAttribute('x', x); el.setAttribute('y', y);
+  el.setAttribute('width', size); el.setAttribute('height', size);
+  el.setAttribute('rx', 10);
+  el.setAttribute('fill', 'none');
+  el.setAttribute('stroke', stroke);
+  el.setAttribute('stroke-width', 6);
+  overlayEl.appendChild(el);
+}
+
+function drawArrow(from, to, color, marker, solid) {
+  const x1 = px(viewCol(from.c)), y1 = py(viewRow(from.r));
+  const x2 = px(viewCol(to.c)), y2 = py(viewRow(to.r));
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const tail = Math.min(30, len * 0.22);
+  const head = Math.min(58, len * 0.4);
+  const line = document.createElementNS(SVG_NS, 'line');
+  line.setAttribute('x1', x1 + ux * tail); line.setAttribute('y1', y1 + uy * tail);
+  line.setAttribute('x2', x2 - ux * head); line.setAttribute('y2', y2 - uy * head);
+  line.setAttribute('stroke', color);
+  line.setAttribute('stroke-width', 13);
+  line.setAttribute('stroke-linecap', 'round');
+  line.setAttribute('marker-end', 'url(#' + marker + ')');
+  if (!solid) line.setAttribute('stroke-dasharray', '22 14');
+  overlayEl.appendChild(line);
+}
+
+/* ---------- 交互 ---------- */
+function onCellClick(r, c) {
+  if (busy) return;
+  const p = grid[r][c];
+  const mySide = side;
+
+  if (selected) {
+    if (selected.r === r && selected.c === c) { selected = null; render(); return; }
+    const from = rcToIccs(selected.r, selected.c);
+    const to = rcToIccs(r, c);
+    if ((legal[from] || []).includes(to)) { doMove(from, to); return; }
+    if (p && ((mySide === 'w') === isRed(p))) { selected = {r, c}; render(); return; }
+    selected = null; render(); return;
+  }
+
+  if (!p) { return; }                       // 点空白：取消选中（本来就无选中）
+  if ((mySide === 'w') !== isRed(p)) return; // 不是该走的那一方
+  selected = {r, c};
+  render();
+}
+
+function snapshot() {
+  return {fen, side, legal, lastMove, inCheck, gameOver,
+          moveLen: moveList.length, lastPlayed, selected: null};
+}
+
+function restore(s) {
+  fen = s.fen; side = s.side; legal = s.legal; lastMove = s.lastMove;
+  inCheck = s.inCheck; gameOver = s.gameOver;
+  moveList = moveList.slice(0, s.moveLen);
+  lastPlayed = s.lastPlayed || null;
+  selected = null;
+  grid = fenToGrid(fen);
+  hint = null;
+  render();
+  renderHint(null);
+}
+
+function applyBoardState(d) {
+  fen = d.fen;
+  side = d.side_code;
+  legal = d.legal || {};
+  lastMove = d.last_move || null;
+  inCheck = !!d.in_check;
+  gameOver = !!d.game_over;
+  grid = fenToGrid(fen);
+  selected = null;
+}
+
+/* ---------- 走子 ---------- */
+async function doMove(fromSq, toSq) {
+  busy = true;
+  const prevFen = fen;
+  try {
+    const d = await apiPost('/api/mobile/move', {fen: prevFen, iccs: fromSq + toSq,
+                                                 token: settings.token});
+    history.push(snapshot());          // 记录走子前的局面，供悔棋
+    if (history.length > 300) history.shift();
+    moveList.push(d.iccs);
+    lastPlayed = {prevFen, iccs: d.iccs, chinese: d.chinese};
+    applyBoardState(d);
+    hint = null;
+    renderHint(null);
+    render();
+    setStatus('你走了 ' + (d.chinese || d.iccs) + '（' + d.iccs + '）');
+    maybeAutoAnalyze();
+  } catch (e) {
+    setStatus(e.message, true);
+    if (e.tokenRequired) toast('需要访问 Token，请在菜单里填写');
+  } finally {
+    busy = false;
+    render();
+  }
+}
+
+/* ---------- AI 提示 ---------- */
+async function runHint(silent) {
+  if (gameOver) { if (!silent) toast('对局已结束'); return; }
+  if (!silent) setStatus('AI 正在分析下一步…');
+  hintBtn.disabled = true;
+  try {
+    const d = await apiPost('/api/mobile/hint', {
+      fen, preset: settings.preset, use_llm: true, token: settings.token,
+    });
+    const pick = d.llm_pick || d.primary;
+    const cands = d.candidates || [];
+    hint = {
+      pick,
+      all: cands,
+      alts: cands.filter(c => c.iccs !== pick.iccs),
+    };
+    renderHint(d);
+    render();
+    setStatus('AI 提示完成（' + (d.movetime || 0) + ' 毫秒，深度 ' + (pick.depth ?? '-') + '）');
+  } catch (e) {
+    setStatus(e.message, true);
+    if (e.tokenRequired) toast('需要访问 Token，请在菜单里填写');
+  } finally {
+    hintBtn.disabled = false;
+  }
+}
+
+/* mv 的 score/mate 是「视角方」的分数；默认视角是当前走子方，可传 perspective 覆盖
+   （教练解说里评的是走这一步的人，那时已轮到对方，视角要反过来） */
+function scoreText(mv, perspective) {
+  if (!mv) return '评分未获取';
+  if (mv.mate !== null && mv.mate !== undefined) {
+    return (mv.mate > 0 ? '走子方' : '对方') + ' ' + Math.abs(mv.mate) + ' 步内将死';
+  }
+  if (mv.score === null || mv.score === undefined) return '评分未获取';
+  const who = perspective || side;
+  const red = who === 'w' ? mv.score : -mv.score;   // 换算成红方视角
+  if (red === 0) return '均势 0';
+  return (red > 0 ? '红优 +' : '黑优 +') + (Math.abs(red) / 100).toFixed(2);
+}
+
+function renderHint(d) {
+  if (!d) { hintCardEl.innerHTML = ''; return; }
+  const primary = d.primary || {};
+  const pick = d.llm_pick || primary;
+  const cands = d.candidates || [];
+  const pv = ((pick.pv_chinese && pick.pv_chinese.length) ? pick.pv_chinese
+              : (pick.pv_iccs || [])).slice(0, 6);
+  const tag = pick.llm_used ? 'LLM 二次筛选' : '引擎首选';
+
+  hintCardEl.innerHTML =
+    '<h2>AI 建议下一步<span class="tag">（' + esc(tag) + '）</span></h2>' +
+    '<div class="aimove">' + esc(pick.chinese || pick.iccs) +
+      '<span class="iccs">' + esc(pick.iccs) + '</span></div>' +
+    '<div class="aiscore">' + esc(scoreText(pick)) + '　深度 ' + esc(pick.depth ?? '-') + '</div>' +
+    (pv.length ? '<ol class="pv">' + pv.map(t => '<li>' + esc(t) + '</li>').join('') + '</ol>' : '') +
+    (cands.length > 1 ? '<div class="alt">' + cands.map((c, i) =>
+      '<button data-cand="' + i + '"' + (c.iccs === pick.iccs ? ' class="on"' : '') + '>' +
+      esc(c.chinese || c.iccs) +
+      (c.iccs === pick.iccs ? '' : '<span class="t">' + esc(scoreText(c)) + '</span>') +
+      '</button>').join('') + '</div>' : '');
+}
+
+/* ---------- 教练解说 ---------- */
+async function runCoach() {
+  if (!lastPlayed) { toast('先走一步棋再让教练解说'); return; }
+  setStatus('教练正在解说这一步…');
+  coachBtn.disabled = true;
+  try {
+    const d = await apiPost('/api/mobile/coach', {
+      prev_fen: lastPlayed.prevFen, played_iccs: lastPlayed.iccs,
+      preset: settings.preset, token: settings.token,
+    });
+    coachCardEl.innerHTML =
+      '<h2>教练解说<span class="tag">（' + (d.llm_used ? 'LLM' : '模板') + '）</span></h2>' +
+      '<div><span class="badge c-' + esc(d.category) + '">' + esc(d.category) + '</span>' +
+      '　<b>' + esc(d.played.chinese || d.played.iccs) + '</b></div>' +
+      '<div class="aiexp">' + esc(d.reason || '') + '</div>' +
+      (d.best && d.best.chinese ? '<div class="ainote">引擎更推荐：' + esc(d.best.chinese) +
+        '（' + esc(scoreText({score: d.best.score, mate: d.best.mate},
+                             side === 'w' ? 'b' : 'w')) + '）</div>' : '');
+    setStatus('');
+  } catch (e) {
+    setStatus(e.message, true);
+    if (e.tokenRequired) toast('需要访问 Token，请在菜单里填写');
+  } finally {
+    coachBtn.disabled = !lastPlayed;
+  }
+}
+
+/* ---------- 自动提示：走子后按开关 + 轮次过滤 ---------- */
+function myTurnToAnalyze() {
+  if (settings.turn === 'auto') return true;
+  return settings.turn === side;
+}
+
+function maybeAutoAnalyze() {
+  if (!settings.auto) return;
+  if (gameOver) return;
+  if (!myTurnToAnalyze()) {
+    setStatus('已走一步；现在轮到对方，按设置不自动提示');
+    return;
+  }
+  runHint(true);
+  if (lastPlayed) runCoach();
+}
+
+/* ---------- 悔棋 ---------- */
+function undo() {
+  if (!history.length) return;
+  const prev = history.pop();
+  restore(prev);
+  lastPlayed = prev.lastPlayed || null;
+  setStatus('已悔棋' + (history.length ? '，还可悔 ' + history.length + ' 步' : '，回到起始局面'));
+  coachCardEl.innerHTML = '';
+  renderHint(null);
+  render();
+}
+
+/* ---------- 同步外部棋局 ---------- */
+async function syncText(text, fmt) {
+  setStatus('正在导入棋局…');
+  const d = await apiPost('/api/mobile/sync', {text, format: fmt || undefined,
+                                               token: settings.token});
+  baseFen = d.start_fen || START_FEN;
+  moveList = (d.moves || []).map(m => m.iccs);
+  lastPlayed = null;
+  history = [];
+  applyBoardState(d);
+  hint = null;
+  renderHint(null);
+  coachCardEl.innerHTML = '';
+  render();
+  const warn = (d.warnings && d.warnings.length) ? '；有 ' + d.warnings.length + ' 处未解析' : '';
+  setStatus('已导入（' + d.fmt + '，' + moveList.length + ' 步）' + warn);
+  toast('棋盘已更新');
+  if (settings.auto && !gameOver && myTurnToAnalyze()) runHint(true);
+}
+
+/* ---------- 保存研究局 ---------- */
+async function doSave() {
+  const name = document.getElementById('svName').value.trim() || '手机研究局';
+  const note = document.getElementById('svNote').value.trim();
+  const tags = document.getElementById('svTags').value.trim();
+  const st = document.getElementById('svStatus');
+  st.className = 'status';
+  st.textContent = '保存中…';
+  try {
+    const d = await apiPost('/api/mobile/save', {
+      name, note, tags, category: 'study',
+      start_fen: baseFen, move_list: moveList, current_fen: fen,
+      token: settings.token,
+    });
+    document.getElementById('saveDlg').close();
+    toast('已保存：研究局 #' + d.game_id + '（' + d.move_count + ' 步）');
+    setStatus('已保存到「我的棋局」#' + d.game_id + '，共 ' + d.move_count + ' 步');
+  } catch (e) {
+    st.className = 'status err';
+    st.textContent = e.message;
+  }
+}
+
+/* ---------- 状态查询 ---------- */
+async function loadStatus() {
+  try {
+    const d = await apiGet('/api/mobile/status');
+    if (d.engine_config) {
+      setThreadsEl.value = d.engine_config.threads ?? '';
+      setHashEl.value = d.engine_config.hash_mb ?? '';
+      setMpvEl.value = d.engine_config.multipv ?? '';
+    }
+    const bits = ['引擎：' + (d.engine_exists ? '就绪' : '未找到')];
+    bits.push('LLM：' + (d.llm_ready ? '已配置' : '未配置'));
+    if (d.token_required) bits.push('Token：已开启');
+    setEngineHintEl.textContent = bits.join('　·　');
+    if (!d.engine_exists && d.engine_error) setStatus(d.engine_error, true);
+    if (d.token_required && !settings.token) {
+      toast('服务端已开启 Token，请在菜单里填写');
+    }
+  } catch (e) {
+    setEngineHintEl.textContent = '状态获取失败：' + e.message;
+  }
+}
+
+/* ---------- 引擎参数 ---------- */
+async function applyEngineConfig() {
+  const body = {threads: Number(setThreadsEl.value), hash_mb: Number(setHashEl.value),
+                multipv: Number(setMpvEl.value)};
+  try {
+    const d = await apiPost('/api/engine_config', body);
+    if (d.engine) {
+      setThreadsEl.value = d.engine.threads;
+      setHashEl.value = d.engine.hash_mb;
+      setMpvEl.value = d.engine.multipv;
+    }
+    toast(d.changed ? '引擎参数已生效' : '参数没变');
+  } catch (e) {
+    toast('引擎参数设置失败：' + e.message);
+  }
+}
+
+/* ---------- 弹窗 / 菜单 ---------- */
+function openDrawer() {
+  document.getElementById('drawer').classList.add('on');
+  document.getElementById('scrim').classList.add('on');
+}
+function closeDrawer() {
+  document.getElementById('drawer').classList.remove('on');
+  document.getElementById('scrim').classList.remove('on');
+}
+
+function bind() {
+  document.getElementById('menuBtn').addEventListener('click', openDrawer);
+  document.getElementById('drawerClose').addEventListener('click', () => {
+    saveSettings(); loadStatus(); closeDrawer();
+  });
+  document.getElementById('scrim').addEventListener('click', () => {
+    saveSettings(); closeDrawer();
+  });
+  setTokenEl.addEventListener('change', () => { saveSettings(); loadStatus(); });
+
+  hintBtn.addEventListener('click', () => runHint(false));
+  coachBtn.addEventListener('click', runCoach);
+  document.getElementById('flipBtn').addEventListener('click', () => {
+    flipped = !flipped; render();
+  });
+  undoBtn.addEventListener('click', undo);
+
+  document.getElementById('syncBtn').addEventListener('click', () => {
+    document.getElementById('syncStatus').textContent = '';
+    document.getElementById('syncDlg').showModal();
+  });
+  document.getElementById('syncCancel').addEventListener('click', () => {
+    document.getElementById('syncDlg').close();
+  });
+  document.getElementById('syncOk').addEventListener('click', async () => {
+    const st = document.getElementById('syncStatus');
+    const text = document.getElementById('syncText').value.trim();
+    const fmt = document.getElementById('syncFmt').value;
+    if (!text) { st.className = 'status err'; st.textContent = '请先粘贴棋谱'; return; }
+    st.className = 'status'; st.textContent = '导入中…';
+    try {
+      await syncText(text, fmt);
+      document.getElementById('syncDlg').close();
+      document.getElementById('syncText').value = '';
+    } catch (e) {
+      st.className = 'status err'; st.textContent = e.message;
+    }
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', () => {
+    document.getElementById('svStatus').textContent = '';
+    document.getElementById('svName').value = '';
+    document.getElementById('svNote').value = '';
+    document.getElementById('svTags').value = '';
+    document.getElementById('saveDlg').showModal();
+  });
+  document.getElementById('svCancel').addEventListener('click', () => {
+    document.getElementById('saveDlg').close();
+  });
+  document.getElementById('svOk').addEventListener('click', doSave);
+  document.getElementById('engineApply').addEventListener('click', applyEngineConfig);
+
+  hintCardEl.addEventListener('click', e => {
+    const btn = e.target.closest('button[data-cand]');
+    if (!btn || !hint) return;
+    // 点候选：只临时切箭头，不落子
+    const all = hint.all || [];
+    const cand = all[Number(btn.dataset.cand)] || hint.pick;
+    hint = {pick: cand, all, alts: all.filter(c => c.iccs !== cand.iccs)};
+    hintCardEl.querySelectorAll('button[data-cand]').forEach(b => b.classList.remove('on'));
+    btn.classList.add('on');
+    render();
+  });
+}
+
+/* ---------- 初始化 ---------- */
+(async function init() {
+  const params = new URLSearchParams(location.search);
+  if (params.get('token')) {
+    try { localStorage.setItem(TOKEN_KEY, params.get('token')); } catch (e) {}
+  }
+  loadSettings();
+  drawLines();
+  bind();
+  await loadStatus();
+  try {
+    await syncText(START_FEN, 'fen');
+  } catch (e) {
+    grid = fenToGrid(START_FEN);
+    render();
+    setStatus('初始局面加载失败：' + e.message, true);
+  }
+})();
+</script>
+
+<script>
+/* ---------- PWA：注册 Service Worker（离线外壳缓存） ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      // 有新版本时：装好就直接激活，下次打开即为新版
+      reg.addEventListener('updatefound', () => {
+        const sw = reg.installing;
+        if (!sw) return;
+        sw.addEventListener('statechange', () => {
+          if (sw.state === 'installed' && navigator.serviceWorker.controller) {
+            sw.postMessage('SKIP_WAITING');
+          }
+        });
+      });
+    }).catch(err => {
+      console.warn('Service Worker 注册失败（离线功能不可用）：', err);
+    });
+  });
+}
+
+/* ---------- 离线提示：断网时顶部显示「需要连接电脑」 ---------- */
+function updateOfflineBar() {
+  const bar = document.getElementById('offlineBar');
+  if (bar) bar.hidden = navigator.onLine;
+}
+window.addEventListener('online', () => { updateOfflineBar(); toast('已重新连接电脑'); });
+window.addEventListener('offline', () => { updateOfflineBar(); toast('已断开连接，需要连接电脑'); });
+updateOfflineBar();
+</script>
+</body>
+</html>

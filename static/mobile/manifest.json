@@ -1,0 +1,27 @@
+{
+  "name": "象棋教练 · 手机版",
+  "short_name": "象棋教练",
+  "description": "中国象棋 AI 教练手机版：触摸走子、AI 实时提示、教练解说、外部棋局同步、保存研究局。",
+  "lang": "zh-CN",
+  "dir": "ltr",
+  "start_url": "/mobile",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#1a1a2e",
+  "theme_color": "#8a6a3a",
+  "icons": [
+    {
+      "src": "/static/mobile/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/static/mobile/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

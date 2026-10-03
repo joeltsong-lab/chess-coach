@@ -171,3 +171,84 @@ def pick_best_move(fen, candidates):
         print(f"[explainer] LLM 二次筛选失败, 退回引擎首选: {type(e).__name__}: {e}",
               file=sys.stderr)
         return first, "引擎首选（LLM 二次筛选失败，已降级）", False
+
+
+# ----------------------------------------------------------------------
+# 教练解说: 对"刚走的那一步"给一段中文点评
+# ----------------------------------------------------------------------
+COACH_SYSTEM_PROMPT = (
+    "你是中国象棋教练。用户会给你一个局面、刚走的一步棋、引擎首选着法、"
+    "两者评分差，以及一个已经定好的档位（最佳/可更好/疑手/失误）。"
+    "你的任务是把这个结论讲清楚，绝不自行推演具体着法、绝不编造评分或变例；"
+    "只解释已有数据，档位以用户给的为准。"
+    "输出必须是严格的 JSON，不要输出 JSON 以外的任何文字、解释或代码块标记。"
+)
+
+COACH_USER_TEMPLATE = """【局面】FEN：{fen}
+轮到走棋：{side}
+对局阶段：{phase}
+
+【刚走的这一步】{played}
+【引擎首选】{best}
+【评分差】{gap} 厘兵（0 = 与引擎首选相当，正值越大越吃亏）
+【教练定档】{category}
+
+请用 1-3 句中文，说明这步棋的问题或优点、为什么算这个档位、以及更好的思路。
+只依据上面给出的数据，不要编造具体着法或评分。
+输出严格 JSON：{{"reason":"..."}}"""
+
+# 档位 -> 模板点评（没配 LLM / LLM 失败时用）
+_COACH_FALLBACK = {
+    "最佳": "这步 {played} 正是引擎首选，没有什么可挑剔的。",
+    "可更好": "{played} 可以考虑，但引擎更推荐 {best}（评分差约 {gap} 厘兵）。",
+    "疑手": "{played} 略有疑问，引擎更推荐 {best}（评分差约 {gap} 厘兵）。",
+    "失误": "{played} 是明显失误，应该走 {best}（评分差约 {gap} 厘兵）。",
+}
+
+
+def _coach_fallback(played, best, gap_cp, category):
+    """LLM 不可用时的模板点评"""
+    template = _COACH_FALLBACK.get(category)
+    if not template:
+        return f"引擎更推荐 {best}。" if best else "暂无点评。"
+    gap = gap_cp if gap_cp is not None else "?"
+    return template.format(played=played or "这步棋", best=best or "?", gap=gap)
+
+
+def coach(fen, played, best, gap_cp, category, phase=None):
+    """对"刚走的那一步"给一段中文点评。
+
+    :param fen: 走这一步**之前**的局面 FEN
+    :param played: 刚走的那一步（中文着法或 ICCS，用于展示）
+    :param best: 引擎首选着法（中文着法或 ICCS）
+    :param gap_cp: played 相对 best 的评分差（厘兵，正数表示 played 更吃亏）
+    :param category: 已经定好的档位: 最佳 / 可更好 / 疑手 / 失误
+    :param phase: 可选，对局阶段（不给就按 FEN 自己判断）
+    :return: (reason, llm_used)；未配置 LLM / 失败都退回模板点评, llm_used=False
+    """
+    fallback = _coach_fallback(played, best, gap_cp, category)
+    if not llm_configured():
+        return fallback, False
+
+    parts = (fen or "").split()
+    side = "红方" if len(parts) > 1 and parts[1].lower().startswith("w") else "黑方"
+    user = COACH_USER_TEMPLATE.format(
+        fen=fen,
+        side=side,
+        phase=phase or detect_phase(fen) or "未知",
+        played=played or "未知",
+        best=best or "未知",
+        gap=gap_cp if gap_cp is not None else "未知",
+        category=category or "未知",
+    )
+    try:
+        data = _parse_llm_json(call_llm([
+            {"role": "system", "content": COACH_SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ]))
+        reason = str(data.get("reason") or "").strip()
+        return (reason or fallback), bool(reason)
+    except Exception as e:
+        print(f"[explainer] LLM 教练解说失败, 退回模板点评: {type(e).__name__}: {e}",
+              file=sys.stderr)
+        return fallback, False

@@ -1,3 +1,5 @@
 # 引擎封装 (chess_engine.py) 和命令行演示 (demo.py)：无第三方依赖，纯标准库
 # Web 界面 (app.py) 需要 Flask
 Flask>=3.0
+# PWA 图标生成 (scripts/gen_icons.py) 需要 Pillow；只在重新生成图标时用，运行服务不需要
+Pillow>=10

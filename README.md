@@ -24,8 +24,13 @@ xiangqi_ai/
 │   └── chess.db           # 棋局库（SQLite，首次运行自动建表；可在「我的棋局」里删掉重建）
 ├── templates/
 │   ├── index.html         # 单页前端：CSS grid 棋盘 + 原生 JS，无框架
-│   └── studies.html       # 我的棋局：列表 / 复盘 / 评语 / 导入导出
+│   ├── studies.html       # 我的棋局：列表 / 复盘 / 评语 / 导入导出
+│   └── mobile/
+│       └── coach.html     # 手机版单页：触摸棋盘 + AI 提示 + 同步 + 教练（HTML+CSS+JS 单文件）
+├── static/
+│   └── mobile/            # 手机版 PWA 资源：manifest.json / sw.js / offline.html / icon-192·512.png
 ├── games_routes.py        # 棋局接口蓝图：保存 / 续下 / 列表 / 复盘 / 评语 / 导出 / 导入
+├── mobile_routes.py       # 手机版接口蓝图：/mobile 页面 + /api/mobile/*（sync/hint/coach/save/status）
 ├── test_coord_utils.py    # coord_utils 的单元测试（python test_coord_utils.py）
 ├── test_rules.py          # 棋规的单元测试（含 perft(3) 校验）
 ├── test_storage.py        # 存储层的单元测试
@@ -313,6 +318,193 @@ set LLM_TIMEOUT=20                 # 可选，秒
 `llm_pick` 退回引擎首选，`reason` 写明降级原因（`引擎首选（未配置 LLM，没做二次筛选）`
 / `引擎首选（LLM 二次筛选失败，已降级）`），`llm_used = false`，引擎结果照常返回。
 LLM 挑的着法如果不在候选里（幻觉），一律当成失败处理，绝不会把编出来的着法显示出来。
+
+### 手机 Web 远程访问版（`/mobile`）
+
+电脑上跑 Flask，手机连同一个 Wi-Fi、用浏览器打开 `http://<电脑内网IP>:5000/mobile` 就能用：
+响应式触摸棋盘 + AI 实时建议 + 外部棋局同步 + 教练解说 + 保存研究局。**纯 Web 远程访问**，
+不自动落子、不截屏识别、不装原生 App、不用 WASM。
+
+**前端**：`templates/mobile/coach.html` 一个文件搞定（HTML + CSS + JS，零外部依赖）。
+CSS Grid 9×10 棋盘、中文棋子（帅仕相马车炮兵 / 将士象马车炮卒）、`click` 事件点选走子、
+原生 `fetch` 调接口。竖屏棋盘占满宽度，横屏棋盘在左、结果在右。
+
+**功能**
+
+- **触摸走子**：点自己的棋子 → 金色光晕高亮、合法落点显示绿色小圆点 → 点落点走子。
+  点空白/再点同格取消选中。落子合法性完全以后端 `core.rules` 为准（手机端不做棋规），
+  所以跟前端网页版判罚一致。不支持拖拽（手机拖拽体验差）。
+- **AI 实时建议**：走子后（开关打开时）或点顶部「AI提示」，调 `/api/mobile/hint`：引擎 MultiPV →
+  （可选）LLM 二次筛选 → 棋盘上画半透明红/蓝箭头，卡片显示最佳着法（中文 + ICCS）、评分（红优/黑优）、
+  搜索深度和后续变化；候选着法可点击切换预览箭头。
+- **自动提示开关**：开 → 走子后自动分析；关 → 手动点「AI提示」。
+- **轮次过滤**：「我执」设为红/黑后，只在轮到自己走时自动弹建议（走棋本身不限制）。
+- **外部棋局同步**：「⇄ 同步」粘贴 **FEN / ICCS / PGN / fenmoves / JSON**（自动识别格式），
+  解析并重放到最终局面后自动分析，让手机能分析「正在进行的外部对局」。
+- **教练解说**：点「🧑‍🏫 教练」调 `/api/mobile/coach`，给刚走的一步定档
+  **最佳 / 可更好 / 疑手 / 失误** 并讲原因（LLM 可降级为模板点评）。
+- **保存研究**：「💾 保存」调 `/api/mobile/save` 存成研究局（`category=study`），
+  之后在「📂 我的棋局」`/studies` 里能看到并复盘。
+- **菜单**：侧滑菜单含「我的棋局」入口、设置（Token / 自动提示 / 搜索时长 / 我执）、引擎参数、关于。
+- **搜索时长**：快速（2 秒）/ 标准（5 秒）/ 深度（10 秒）。引擎只支持**按时间搜索**，
+  没有 depth 档，所以「深度」实现为更长的思考时间。
+
+**部署**
+
+```bash
+cd chess-coach
+pip install -r requirements.txt
+python app.py
+# 电脑本机：http://127.0.0.1:5000
+# 手机同 Wi-Fi：http://<电脑内网IP>:5000/mobile   （启动日志里会直接打印这一行）
+```
+
+- **查内网 IP**：Windows `ipconfig`（看「IPv4 地址」）；macOS / Linux `ifconfig` 或 `ip addr`。
+- **防火墙放行 5000 端口**：Windows 首次启动会弹「允许访问」，勾上专用网络即可；
+  或手动 `netsh advfirewall firewall add rule name="chess-coach" dir=in action=allow protocol=TCP localport=5000`。
+  macOS / Linux 一般无需额外设置。
+- **服务端绑定**：`app.py` 默认 `host="0.0.0.0"`（手机才能连），端口 `5000`。
+  只在电脑本机用也可以，不影响。
+- **外网访问（可选）**：用 Cloudflare 隧道把本机 5000 暴露出去，无需改路由器：
+
+  ```bash
+  cloudflared tunnel --url http://localhost:5000
+  # 命令会打印一个 https://xxxx.trycloudflare.com 的临时地址
+  # 手机（任何网络）打开 https://xxxx.trycloudflare.com/mobile
+  ```
+
+  正式使用建议配一个有域名的命名隧道（`cloudflared tunnel create` + `config.yml`）。
+
+**PWA（添加到主屏幕，当 App 用）**
+
+手机版支持 PWA：用浏览器打开 `/mobile` 后选「添加到主屏幕」，桌面会出现「象棋教练」图标，
+点开即**全屏**（无地址栏、无浏览器 UI）；首次加载完成后断网也能打开外壳
+（棋盘照常显示，引擎 / AI 提示需要电脑端在线）。
+
+| 文件 | 作用 |
+| ---- | ---- |
+| `static/mobile/manifest.json` | 应用清单：名称、图标、`display: standalone`、`start_url: /mobile`、`scope: /` |
+| `static/mobile/sw.js` | Service Worker：预缓存外壳 + 网络优先 + 离线回退 + 版本管理 |
+| `static/mobile/offline.html` | 断网且无缓存时的「需要连接电脑」提示页 |
+| `static/mobile/icon-192.png` / `icon-512.png` | 图标（脚本生成） |
+| `scripts/gen_icons.py` | 用 Pillow 生成上面两个图标（背景 `#1a1a2e`，红色「帅」） |
+
+> **为什么 SW 走 `/sw.js` 而不是 `/static/mobile/sw.js`**：Service Worker 的作用域**不能超出自身 URL 的路径**。
+> 直接注册 `/static/mobile/sw.js`，作用域就只有 `/static/mobile/`，**管不到 `/mobile` 页面**。
+> 所以 `app.py` 用 `/sw.js` 这个根路径把同一个文件发出去（带 `Service-Worker-Allowed: /`），
+> 文件本体仍放在 `static/mobile/` 下。
+
+**缓存策略**
+
+- `/api/**`（走子 / 分析 / 提示 / 保存）**永远走网络、不缓存** —— 棋局数据必须实时；
+- 打开 `/mobile` 的导航请求：**网络优先** → 断网时用缓存的外壳 → 再退到 `offline.html`；
+- 其他静态资源（图标 / manifest / offline.html）：网络优先，拿到就顺手更新缓存，失败回退缓存。
+
+**更新**：把 `sw.js` 里的 `CACHE_VERSION` 递增（如 `chess-coach-mobile-v2`）即视为新版本，
+旧缓存会在新 SW 激活时自动清掉并接管所有页面。
+
+**重新生成图标**（改样式 / 换字时）：
+
+```bash
+pip install -r requirements.txt      # 含 Pillow
+python scripts/gen_icons.py          # 生成 static/mobile/icon-192.png 与 icon-512.png
+```
+
+**验证清单**
+
+- **Chrome Android**：打开 `http://<内网IP>:<端口>/mobile` → 右上菜单 → 「添加到主屏幕」→
+  桌面出现「象棋教练」图标 → 点击**全屏打开**（无地址栏）。
+- **Safari iOS**：打开同一地址 → 分享 → 「添加到主屏幕」→ 桌面出现图标 → 点击**全屏打开**。
+- **全屏**：进入后没有地址栏、没有浏览器 UI（`display: standalone` 生效）。
+- **离线**：首次加载完成后断网 → 重新打开仍显示棋盘外壳，页面顶部出现红色
+  「⚠ 离线：需要连接电脑才能分析」提示条；此时点「AI提示」会失败并提示需要连接电脑。
+
+> 端口：`python app.py` 是 5000；用 `scripts/run.sh mobile` 起的话是 5002。
+
+**安全（可选 Token）**
+
+设了环境变量 `MOBILE_TOKEN` 就开启保护：所有 `/api/mobile/*` 请求必须带 Token，
+支持三种传法（任一即可）——请求头 `X-Mobile-Token`、查询参数 `?token=`、请求体 `token` 字段。
+
+```bash
+# Windows (PowerShell)
+set MOBILE_TOKEN=mysecret && python app.py
+# macOS / Linux
+export MOBILE_TOKEN=mysecret && python app.py
+```
+
+- 手机端在侧滑菜单「设置 → 访问 Token」填一次即可（存在手机浏览器 `localStorage`）；
+  也可以直接用带 Token 的链接打开：`http://<IP>:5000/mobile?token=mysecret`。
+- 没设 `MOBILE_TOKEN` 时不校验，局域网内任何人可访问；**外网暴露时务必设 Token**。
+- 页面本身 `/mobile` 不校验 Token（只护接口），这样打开页面才有机会提示你填 Token。
+
+**接口**（都返回 JSON `{"ok": true/false, ...}`；参数/棋规错误 400、引擎缺失或崩溃 503）
+
+| 方法 | 路径 | 作用 |
+| ---- | ---- | ---- |
+| GET  | `/mobile` | 手机版单页 |
+| GET  | `/api/mobile/status` | 引擎 / LLM 就绪状态 + 默认参数（预设、朝向、开局 FEN） |
+| POST | `/api/mobile/sync` | 导入 FEN / ICCS / PGN / fenmoves / JSON → 最终局面 + 着法 + 合法着法表 |
+| POST | `/api/mobile/move` | 在给定局面上走一步 → 新局面 + 新合法着法表 |
+| POST | `/api/mobile/hint` | AI 提示下一步（引擎 MultiPV + 可选 LLM 二次筛选） |
+| POST | `/api/mobile/coach` | 教练解说刚走的一步（定档 + 原因） |
+| POST | `/api/mobile/save` | 存为研究局（`core.storage`） |
+
+`POST /api/mobile/sync` — `{"text": "<FEN/ICCS/PGN/...>", "format": null}`（`format` 不给自动识别）。
+响应在局面字段之外还带 `fmt / start_fen / moves[] / warnings[] / meta`；局面字段如下
+（`sync` / `move` 都返回同一套）：
+
+```jsonc
+{
+  "ok": true,
+  "fen": "rnbakabnr/9/1c5c1/p1p1p1p1p/9/9/P1P1P1P1P/1C5C1/9/RNBAKABNR w - - 0 1",
+  "side_code": "w",              // 'w' / 'b'（该谁走）
+  "side_to_move": "red",         // red / black
+  "in_check": false,             // 当前是否被将军
+  "game_over": false,            // 无合法着法 = true
+  "legal": {"b0": ["c2"], "h2": ["e2", "g2"], ...},   // {起点ICCS: [终点ICCS,...]}
+  "last_move": {"from_sq": "h2", "to_sq": "e2", "chinese": "炮二平五", "iccs": "h2e2"}
+}
+```
+
+`legal` 是「点棋子 → 高亮合法落点」的唯一数据来源，手机端只做坐标换算，不做棋规。
+
+`POST /api/mobile/move` — `{"fen": "...", "iccs": "h2e2"}`（也可写 `from_sq` + `to_sq`）。
+非法着法返回 400 + 中文原因，局面不变；成功则额外带 `iccs` / `chinese` / `captured`。
+
+`POST /api/mobile/hint` — `{"fen": "...", "preset": "fast|standard|deep", "use_llm": true}`
+（`preset` 与 `movetime` 二选一，都没有用后端默认）。响应结构同网页版 `/api/ai_hint`：
+`primary` / `candidates` / `llm_pick`（含 `reason`、`llm_used`、`engine_first`）/ `movetime` / `side`。
+
+`POST /api/mobile/coach` — `{"prev_fen": "...", "played_iccs": "h2e2", "preset": "standard"}`。
+`prev_fen` 是走这一步**之前**的局面。响应：
+
+```jsonc
+{"ok": true,
+ "played": {"iccs": "h2e2", "chinese": "炮二平五"},
+ "best":   {"iccs": "b2e2", "chinese": "炮八平五", "score": 30, "mate": null},
+ "played_score": 27, "played_mate": null, "gap_cp": 3,
+ "category": "最佳",              // 最佳 / 可更好 / 疑手 / 失误
+ "reason": "……", "llm_used": false}
+```
+
+定档规则：引擎分别评 `prev_fen`（给 `best`）和走完之后的局面（给实走着法，取负换算成走子方视角），
+`gap_cp = max(0, best_score - played_score)`；`≤30` 最佳 / `≤100` 可更好 / `≤250` 疑手 / 更高为失误；
+引擎报有杀棋而实走没走出时直接判失误。原因优先交给 LLM 讲解（未配 LLM 或失败时降级为模板点评）。
+
+`POST /api/mobile/save` — `{"name": "…", "category": "study", "start_fen": "…",
+"move_list": ["h2e2", "h9g7"], "current_fen": "…", "note": "…", "tags": "手机,研究"}`。
+`move_list` 给了就整串重放后逐步入库（某步走不通则整体拒绝），返回 `{"ok": true, "game_id": N, "move_count": M}`。
+存好后在 `/api/games/list` 里可见（分类为 `study`）。
+
+**一个端到端验证**
+
+1. 电脑 `python app.py`，记下日志里打印的「手机同 Wi-Fi」地址。
+2. 手机浏览器打开 `http://<内网IP>:5000/mobile`，点棋子 → 出现绿色落点 → 点落点走一步。
+3. 点顶部「AI提示」→ 棋盘出现红/蓝箭头，卡片显示中文着法 + 评分（引擎文件放进 `engine/` 后才有结果）。
+4. 点「⇄ 同步」粘贴一段 FEN 或 PGN → 棋盘更新并自动分析。
+5. 点「💾 保存」→ toast 提示已保存；在电脑打开 `/studies`（或 `GET /api/games/list`）能看到这一局。
+6. 设了 `MOBILE_TOKEN` 时，未填 Token 的接口调用返回 401，菜单里填对后恢复正常。
 
 ## 四、输出格式说明
 

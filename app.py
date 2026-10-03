@@ -15,11 +15,13 @@
 """
 
 import atexit
+import os
 import threading
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 
 import games_routes
+import mobile_routes
 from core.chess_engine import (
     DEFAULT_MOVETIME,
     ENGINE_HASH_MB,
@@ -98,6 +100,11 @@ def _read_movetime(payload: dict, default: int, maximum: int) -> int:
 # 棋局保存/复盘蓝图: 建表 + 注册路由, 并把引擎访问方式注入过去(打分要用, 复用同一个引擎进程)
 games_routes.init_app(app, get_engine=get_engine, analyze_lock=_analyze_lock)
 
+# 手机 Web 远程访问版蓝图: /mobile 单页 + /api/mobile/*.
+# 复用同一个引擎进程和同一把分析锁; Token 保护由环境变量 MOBILE_TOKEN 开启。
+mobile_routes.init_app(app, get_engine=get_engine, analyze_lock=_analyze_lock,
+                       engine_config=ENGINE_CONFIG)
+
 
 @app.route("/")
 def index():
@@ -108,6 +115,28 @@ def index():
 def studies():
     """我的棋局: 列表 / 复盘 / 导入导出"""
     return render_template("studies.html", start_fen=START_FEN)
+
+
+# ---------- PWA: Service Worker 与 manifest ----------
+# 静态资源本身走 Flask 默认的 /static/<path>（所以 /static/mobile/** 天然可访问），
+# 但 Service Worker 有个硬性要求：它的作用域不能超过它自己的 URL 路径。
+# 若直接注册 /static/mobile/sw.js，作用域就只有 /static/mobile/，管不到 /mobile 页面，
+# 所以这里用 /sw.js 这个根路径把它以「根作用域」提供出去（文件本体仍在 static/mobile/）。
+@app.route("/sw.js")
+def service_worker():
+    resp = send_from_directory(os.path.join(app.static_folder, "mobile"), "sw.js",
+                               mimetype="application/javascript")
+    resp.headers["Service-Worker-Allowed"] = "/"   # 允许根作用域
+    resp.headers["Cache-Control"] = "no-cache"     # 保证能拿到新版 SW
+    return resp
+
+
+@app.route("/manifest.json")
+def manifest_alias():
+    """有些安卓浏览器只认站点根的 /manifest.json，这里给个直达入口。
+    页面里用的仍是 /static/mobile/manifest.json（等价，随便哪个都行）。"""
+    return send_from_directory(os.path.join(app.static_folder, "mobile"), "manifest.json",
+                               mimetype="application/manifest+json")
 
 
 @app.route("/api/analyze", methods=["POST"])
@@ -272,6 +301,19 @@ def api_engine_config():
     return jsonify({"ok": True, "changed": changed, "engine": dict(ENGINE_CONFIG)})
 
 
+def _lan_ip() -> str:
+    """取本机内网 IP, 方便手机访问(失败就返回 127.0.0.1)"""
+    import socket
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        sock.connect(("8.8.8.8", 80))       # 不会真的发包, 只是让内核选出出口网卡
+        return sock.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        sock.close()
+
+
 if __name__ == "__main__":
     print(f"引擎路径: {ENGINE_PATH}")
     print(f"棋盘朝向: {GRID_ORIENTATION}")
@@ -279,5 +321,9 @@ if __name__ == "__main__":
           f"Hash={ENGINE_CONFIG['hash_mb']}MB MultiPV={ENGINE_CONFIG['multipv']} "
           f"默认思考时间={ENGINE_CONFIG['movetime']}ms")
     print(f"LLM 二次筛选: {'已配置' if llm_configured() else '未配置 (AI 提示只有引擎首选)'}")
-    print("启动后打开 http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+    token_on = bool(mobile_routes.MOBILE_TOKEN)
+    print(f"手机版 Token 保护: {'已开启 (MOBILE_TOKEN)' if token_on else '未开启'}")
+    print("电脑本机打开:  http://127.0.0.1:5000          (下棋 / 分析)")
+    print(f"手机同 Wi-Fi:  http://{_lan_ip()}:5000/mobile  (触摸棋盘 / AI 提示)")
+    # 绑 0.0.0.0 手机才能连; 只在本机用也可以，不影响
+    app.run(host="0.0.0.0", port=5000, debug=False, threaded=True)
