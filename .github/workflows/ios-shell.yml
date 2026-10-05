@@ -63,6 +63,15 @@ jobs:
           sleep 8
           xcrun simctl io "$UDID" screenshot mobile/ios/shot-2-webview.png
 
+      - name: 诊断（打印 App 日志与崩溃报告）
+        if: always()
+        run: |
+          echo "== ChessCoach 最近日志 =="
+          xcrun simctl spawn "$UDID" log show --last 3m --style compact \
+            --predicate 'process == "ChessCoach" OR eventMessage CONTAINS "ChessCoach"' 2>/dev/null | tail -n 120 || true
+          echo "== 崩溃报告 =="
+          ls -1t ~/Library/Logs/DiagnosticReports/ 2>/dev/null | head -n 10 || true
+
       - name: 上传截图
         if: always()
         uses: actions/upload-artifact@v4
