@@ -96,7 +96,7 @@ class ConfigActivity : AppCompatActivity() {
         // 简单起见用线程 + runOnUiThread（不引入协程依赖）
         Thread {
             var ok = false
-            val message: String
+            var message = ""
             try {
                 val conn = (URL(Prefs.statusUrl(host, port)).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"

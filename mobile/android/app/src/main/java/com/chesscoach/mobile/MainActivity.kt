@@ -26,14 +26,14 @@ import org.json.JSONObject
  * - 首次启动（没存过地址）→ 先跳 ConfigActivity
  * - 之后启动 → 直接加载已保存的地址
  * - 返回键 → WebView 能后退就后退，否则退出
- * - 页面脚本执行前注入 JS，给所有 /api/mobile/* 请求自动加 X-Mobile-Token 头
+ * - 页面脚本执行前注入 JS，给所有 api/mobile/ 接口请求自动加 X-Mobile-Token 头
  */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var progressBar: ProgressBar
 
-    private var scriptHandler: WebViewCompat.ScriptHandler? = null
+    private var scriptHandler: androidx.webkit.ScriptHandler? = null
     private var errorDialogVisible = false
 
     /** 老版本 WebView 不支持 document-start 注入，需要退回 onPageStarted 注入 */
