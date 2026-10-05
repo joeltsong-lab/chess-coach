@@ -56,15 +56,22 @@ jobs:
           set -euo pipefail
           mkdir -p mock/mobile
           printf '%s\n' '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>mock</title><body style="font-family:sans-serif;padding:2rem"><h2>WebView OK</h2><p>CI 里的假后端，用于验证 WKWebView 能正常加载页面。</p></body>' > mock/mobile/index.html
-          (cd mock && nohup python3 -m http.server 5002 > "$GITHUB_WORKSPACE/mock-server.log" 2>&1 &)
-          sleep 2
-          echo "mock 自检: HTTP $(curl -s -o /dev/null -w '%{http_code}' -m 5 http://127.0.0.1:5002/mobile/)"
+          python3 --version
+          nohup python3 -m http.server 5002 --bind 127.0.0.1 --directory mock > /tmp/mock.log 2>&1 &
+          echo "mock pid=$!"
+          for i in $(seq 1 15); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -m 2 http://127.0.0.1:5002/mobile/ || true)
+            echo "等待 mock 就绪 $i: HTTP $code"
+            if [ "$code" = "200" ]; then break; fi
+            sleep 1
+          done
+          echo "== 端口监听 =="; lsof -nP -iTCP:5002 || true
+          echo "== mock 启动日志 =="; cat /tmp/mock.log || true
           xcrun simctl terminate "$UDID" com.chesscoach.mobile || true
           xcrun simctl launch "$UDID" com.chesscoach.mobile -cc_host 127.0.0.1 -cc_port 5002
           sleep 20
           xcrun simctl io "$UDID" screenshot mobile/ios/shot-2-webview.png
-          echo "== mock 服务访问日志 =="
-          cat "$GITHUB_WORKSPACE/mock-server.log" || true
+          echo "== mock 访问日志（尾） =="; tail -n 20 /tmp/mock.log || true
 
       - name: 诊断（打印 App 日志与崩溃报告）
         if: always()
