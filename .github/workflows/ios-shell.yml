@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p mock/mobile
-          printf '%s\n' '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>mock</title><body style="font-family:sans-serif;padding:2rem"><h2>WebView OK</h2><p>CI 里的假后端，用于验证 WKWebView 能正常加载页面。</p></body>' > mock/mobile/index.html
+          printf '%s\n' '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>mock</title><body style="font-family:sans-serif;padding:2rem"><h2>WebView OK</h2><p>CI 里的假后端，用于验证 WKWebView 能正常加载页面。</p></body>' > mock/mobile/index.html
           python3 --version
           nohup python3 -m http.server 5002 --bind 127.0.0.1 --directory mock > /tmp/mock.log 2>&1 &
           echo "mock pid=$!"
