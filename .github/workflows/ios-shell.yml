@@ -37,14 +37,7 @@ jobs:
       - name: 启动模拟器并安装
         run: |
           set -euo pipefail
-          UDID=$(xcrun simctl list devices available -j | python3 -c '
-import json, sys
-d = json.load(sys.stdin)["devices"]
-for rt in sorted(d):
-    for dev in d[rt]:
-        if dev["name"].startswith("iPhone"):
-            print(dev["udid"]); raise SystemExit
-')
+          UDID=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin)["devices"]; print(next(dev["udid"] for rt in sorted(d) for dev in d[rt] if dev["name"].startswith("iPhone")))')
           echo "已选模拟器 UDID=$UDID"
           echo "UDID=$UDID" >> "$GITHUB_ENV"
           xcrun simctl boot "$UDID" || true
