@@ -4,7 +4,7 @@
 #
 #   scripts/run.sh stable        稳定版（main）            http://127.0.0.1:5000
 #   scripts/run.sh endgame       残局版（feature/endgame）  http://127.0.0.1:5001
-#   scripts/run.sh mobile        手机端（feature/mobile）   http://127.0.0.1:5002
+#   scripts/run.sh mobile        手机端（feature/mobile）   http://<内网IP>:5002（绑 0.0.0.0）
 #   scripts/run.sh all           三个一起（后台运行）
 #   scripts/run.sh stop [模块]   按 PID 停止（默认停全部）
 #   scripts/run.sh status        各模块的目录/分支/PID/端口/存活情况
@@ -28,6 +28,9 @@
 #      所以关掉终端、换个 Git Bash 会话，stop 依然有效。
 #   4) mobile 与 main 同源，也有 app.py，所以会真的起在 5002；
 #      将来它若退回「只有 README」的占位状态，脚本会提示“尚无启动入口”并跳过。
+#   5) 监听地址：mobile 要给同 Wi-Fi 的手机访问，绑 0.0.0.0（用内网 IP 打开）；
+#      stable/endgame 只给本机用，绑 127.0.0.1，避免把桌面版暴露到局域网。
+#      host 与端口一样，都用 `python -c` 注入，不改仓库里的 app.py。
 # =============================================================================
 set -euo pipefail
 
@@ -71,6 +74,14 @@ port_of() {
     endgame) printf '%s' "$PORT_ENDGAME" ;;
     mobile)  printf '%s' "$PORT_MOBILE" ;;
     *)       printf '?' ;;
+  esac
+}
+
+# 监听地址：mobile 要手机访问 -> 0.0.0.0；stable/endgame 只给本机 -> 127.0.0.1
+host_of() {
+  case "$1" in
+    mobile) printf '0.0.0.0' ;;
+    *)      printf '127.0.0.1' ;;
   esac
 }
 
@@ -203,6 +214,7 @@ chess-coach 启动/停止
   选项: --bg 单模块也后台运行 / --fg 仅对 all 无效（all 固定后台）
 
 端口: stable 5000 | endgame 5001 | mobile 5002
+监听: stable/endgame 绑 127.0.0.1（仅本机）；mobile 绑 0.0.0.0（手机用内网 IP 访问 /mobile）
 日志: scripts/.logs/<模块>.log     PID: scripts/.pids/<模块>.pid
 EOF
 }
@@ -210,8 +222,9 @@ EOF
 # 启动单个模块
 start_one() {
   local name="$1" bg="$2"
-  local port dir py code pid cur_pid native pidfile
+  local port host dir py code pid cur_pid native pidfile
   port="$(port_of "$name")"
+  host="$(host_of "$name")"
 
   dir="$(resolve_dir "$name")" || return 1
 
@@ -236,14 +249,15 @@ start_one() {
   sub "python: $py"
   sub "日志: $LOG_DIR/$name.log"
 
-  # 不改动 app.py（里面把端口写死成 5000）：导入模块后用指定端口起服务。
+  # 不改动 app.py（里面把端口写死成 5000、地址写死成 127.0.0.1）：
+  # 导入模块后用 argv 注入的方式起服务，argv[1]=端口、argv[3]=监听地址。
   # 顺带让 python 把自己的原生 PID 写进 argv[2] 指定的文件：只有这个 PID
   # 换会话后还能被 Windows 的 taskkill 认出来（$! 是 MSYS 的 PID，会失效）。
-  code='import os, sys; sys.path.insert(0, "."); import app as m; open(sys.argv[2], "w").write(str(os.getpid())); m.app.run(host="127.0.0.1", port=int(sys.argv[1]), debug=False, threaded=True)'
+  code='import os, sys; sys.path.insert(0, "."); import app as m; open(sys.argv[2], "w").write(str(os.getpid())); m.app.run(host=sys.argv[3], port=int(sys.argv[1]), debug=False, threaded=True)'
   pidfile="$PID_DIR/$name.pid"
   rm -f "$pidfile"
 
-  ( cd "$dir" && exec "$py" -u -c "$code" "$port" "$pidfile" ) >>"$LOG_DIR/$name.log" 2>&1 &
+  ( cd "$dir" && exec "$py" -u -c "$code" "$port" "$pidfile" "$host" ) >>"$LOG_DIR/$name.log" 2>&1 &
   pid=$!
 
   # 等 python 把原生 PID 写出来（这一步写不出来基本就是没起来）
@@ -256,7 +270,7 @@ start_one() {
     i=$((i + 1))
   done
   if [ -n "$native" ]; then
-    sub "原生 PID $native -> http://127.0.0.1:$port"
+    sub "原生 PID $native -> http://$host:$port"
   else
     warn "$name 没写出 PID 文件（可能启动失败），看日志: $LOG_DIR/$name.log"
   fi
