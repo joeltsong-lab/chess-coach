@@ -1,0 +1,79 @@
+name: iOS 壳 App（模拟器）
+
+on:
+  push:
+    branches: [ feature/mobile, main ]
+    paths:
+      - 'mobile/ios/**'
+      - '.github/workflows/ios-shell.yml'
+  workflow_dispatch:
+
+jobs:
+  simulator:
+    name: 编译 → 启动模拟器 → 截图
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 环境信息
+        run: |
+          xcodebuild -version
+          xcrun simctl list devices available | sed -n '1,30p'
+
+      - name: 编译（iphonesimulator）
+        working-directory: mobile/ios
+        run: |
+          set -e
+          xcodebuild \
+            -project ChessCoach.xcodeproj \
+            -scheme ChessCoach \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: 启动模拟器并安装
+        run: |
+          set -euo pipefail
+          UDID=$(xcrun simctl list devices available -j | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["devices"]
+for rt in sorted(d):
+    for dev in d[rt]:
+        if dev["name"].startswith("iPhone"):
+            print(dev["udid"]); raise SystemExit
+')
+          echo "已选模拟器 UDID=$UDID"
+          echo "UDID=$UDID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$UDID" || true
+          xcrun simctl bootstatus "$UDID" -b
+          xcrun simctl install "$UDID" "mobile/ios/build/Build/Products/Debug-iphonesimulator/ChessCoach.app"
+
+      - name: 截图 1 —— 首次启动（配置页）
+        run: |
+          set -euo pipefail
+          xcrun simctl launch "$UDID" com.chesscoach.mobile
+          sleep 6
+          xcrun simctl io "$UDID" screenshot mobile/ios/shot-1-config.png
+
+      - name: 截图 2 —— 预置地址后启动（WebView 加载本地 mock）
+        run: |
+          set -euo pipefail
+          mkdir -p mock/mobile
+          printf '%s\n' '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>mock</title><body style="font-family:sans-serif;padding:2rem"><h2>WebView OK</h2><p>CI 里的假后端，用于验证 WKWebView 能正常加载页面。</p></body>' > mock/mobile/index.html
+          (cd mock && nohup python3 -m http.server 5002 >/dev/null 2>&1 &)
+          sleep 2
+          xcrun simctl terminate "$UDID" com.chesscoach.mobile || true
+          xcrun simctl launch "$UDID" com.chesscoach.mobile -cc_host 127.0.0.1 -cc_port 5002
+          sleep 8
+          xcrun simctl io "$UDID" screenshot mobile/ios/shot-2-webview.png
+
+      - name: 上传截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-screenshots
+          path: mobile/ios/shot-*.png
+          if-no-files-found: warn
